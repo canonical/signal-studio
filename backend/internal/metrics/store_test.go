@@ -165,7 +165,7 @@ func TestGaugeValue(t *testing.T) {
 
 func TestComputeSnapshot(t *testing.T) {
 	t0 := time.Now()
-	t1 := t0.Add(10 * time.Second)
+	t1 := t0.Add(20 * time.Second)
 
 	store := NewStore()
 	store.Push(&Snapshot{
@@ -195,22 +195,22 @@ func TestComputeSnapshot(t *testing.T) {
 		t.Errorf("status = %q, want connected", cs.Status)
 	}
 
-	// Receiver: (20000-10000)/10 = 1000 spans/s
+	// Receiver: (20000-10000)/20 = 500 spans/s
 	recv, ok := cs.Receivers["otlp"]
 	if !ok {
 		t.Fatal("missing receiver 'otlp'")
 	}
-	if recv.AcceptedSpansRate != 1000 {
-		t.Errorf("receiver accepted rate = %f, want 1000", recv.AcceptedSpansRate)
+	if recv.AcceptedSpansRate != 500 {
+		t.Errorf("receiver accepted rate = %f, want 500", recv.AcceptedSpansRate)
 	}
 
-	// Exporter: (18000-9000)/10 = 900 spans/s
+	// Exporter: (18000-9000)/20 = 450 spans/s
 	exp, ok := cs.Exporters["otlp/backend"]
 	if !ok {
 		t.Fatal("missing exporter 'otlp/backend'")
 	}
-	if exp.SentSpansRate != 900 {
-		t.Errorf("exporter sent rate = %f, want 900", exp.SentSpansRate)
+	if exp.SentSpansRate != 450 {
+		t.Errorf("exporter sent rate = %f, want 450", exp.SentSpansRate)
 	}
 	if exp.QueueSize != 200 {
 		t.Errorf("queue size = %f, want 200", exp.QueueSize)
@@ -219,16 +219,16 @@ func TestComputeSnapshot(t *testing.T) {
 		t.Errorf("queue utilization = %f, want 20", exp.QueueUtilizationPct)
 	}
 
-	// Signal: accepted=1000, sent=900, drop=10%
+	// Signal: accepted=500, sent=450, drop=10%
 	traces, ok := cs.Signals["traces"]
 	if !ok {
 		t.Fatal("missing signal 'traces'")
 	}
-	if traces.ReceiverAcceptedRate != 1000 {
-		t.Errorf("traces accepted rate = %f, want 1000", traces.ReceiverAcceptedRate)
+	if traces.ReceiverAcceptedRate != 500 {
+		t.Errorf("traces accepted rate = %f, want 500", traces.ReceiverAcceptedRate)
 	}
-	if traces.ExporterSentRate != 900 {
-		t.Errorf("traces sent rate = %f, want 900", traces.ExporterSentRate)
+	if traces.ExporterSentRate != 450 {
+		t.Errorf("traces sent rate = %f, want 450", traces.ExporterSentRate)
 	}
 	if traces.DropRatePct != 10 {
 		t.Errorf("traces drop rate = %f, want 10", traces.DropRatePct)
