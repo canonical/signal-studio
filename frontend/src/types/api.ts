@@ -37,6 +37,63 @@ export interface Finding {
 export interface AnalyzeResponse {
   config: CollectorConfig;
   findings: Finding[];
+  filterAnalyses?: FilterAnalysis[];
+}
+
+// Tap types
+
+export type TapStatus = "idle" | "listening" | "stopping" | "error";
+
+export type MetricType =
+  | "gauge"
+  | "sum"
+  | "histogram"
+  | "summary"
+  | "exponential_histogram";
+
+export interface MetricEntry {
+  name: string;
+  type: MetricType;
+  attributeKeys: string[];
+  pointCount: number;
+  scrapeCount: number;
+  lastSeenAt: string;
+  firstSeenAt: string;
+}
+
+export interface TapStatusResponse {
+  status: TapStatus;
+  error?: string;
+  startedAt?: string;
+  grpcAddr?: string;
+  httpAddr?: string;
+}
+
+export interface TapCatalogResponse {
+  entries: MetricEntry[];
+  count: number;
+  rateChanged: boolean;
+}
+
+// Filter analysis types
+
+export type MatchOutcome = "kept" | "dropped" | "unknown";
+
+export interface MatchResult {
+  metricName: string;
+  outcome: MatchOutcome;
+  matchedBy?: string;
+}
+
+export interface FilterAnalysis {
+  processorName: string;
+  pipeline: string;
+  style: string;
+  results: MatchResult[];
+  keptCount: number;
+  droppedCount: number;
+  unknownCount: number;
+  hasUnsupported: boolean;
 }
 
 export interface ErrorResponse {

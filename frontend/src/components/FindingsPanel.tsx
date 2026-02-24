@@ -43,6 +43,9 @@ function FindingItem({ finding }: { finding: Finding }) {
       className={`finding-item${expanded ? " is-expanded" : ""}`}
       onClick={() => setExpanded(!expanded)}
     >
+      <span className={`finding-item__chevron${expanded ? " is-open" : ""}`}>
+        &#x203A;
+      </span>
       <div className="finding-item__icon">
         <StatusIcon status={finding.severity} size={18} />
       </div>

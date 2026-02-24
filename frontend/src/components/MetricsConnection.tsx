@@ -48,7 +48,7 @@ export function MetricsConnection({
 }: MetricsConnectionProps) {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState(
-    () => localStorage.getItem("otel-signal-lens:metrics-url") ?? "http://localhost:8888/metrics",
+    () => localStorage.getItem("signal-studio:metrics-url") ?? "http://localhost:8888/metrics",
   );
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -76,7 +76,7 @@ export function MetricsConnection({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!url.trim()) return;
-    localStorage.setItem("otel-signal-lens:metrics-url", url.trim());
+    localStorage.setItem("signal-studio:metrics-url", url.trim());
     onConnect(url.trim(), token.trim() || undefined);
     setOpen(false);
   }
