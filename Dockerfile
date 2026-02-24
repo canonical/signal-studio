@@ -10,13 +10,13 @@ WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 go build -o /otel-signal-lens ./cmd/server
+RUN CGO_ENABLED=0 go build -o /signal-studio ./cmd/server
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
-COPY --from=backend-build /otel-signal-lens ./otel-signal-lens
+COPY --from=backend-build /signal-studio ./signal-studio
 COPY --from=frontend-build /app/frontend/dist ./static
 ENV PORT=8080
 EXPOSE 8080
-ENTRYPOINT ["./otel-signal-lens"]
+ENTRYPOINT ["./signal-studio"]
