@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/simskij/signal-studio/internal/metrics"
-	"github.com/simskij/signal-studio/internal/tap"
+	"github.com/canonical/signal-studio/internal/metrics"
+	"github.com/canonical/signal-studio/internal/tap"
 )
 
 // NewRouter creates the HTTP handler with all routes.

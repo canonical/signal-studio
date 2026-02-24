@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/simskij/signal-studio/internal/config"
-	"github.com/simskij/signal-studio/internal/filter"
-	"github.com/simskij/signal-studio/internal/tap"
+	"github.com/canonical/signal-studio/internal/config"
+	"github.com/canonical/signal-studio/internal/filter"
+	"github.com/canonical/signal-studio/internal/tap"
 )
 
 // Rule 1: Internal metrics not filtered

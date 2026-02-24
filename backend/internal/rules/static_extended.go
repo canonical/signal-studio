@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/simskij/signal-studio/internal/config"
+	"github.com/canonical/signal-studio/internal/config"
 )
 
 // R11: memory_limiter not first processor

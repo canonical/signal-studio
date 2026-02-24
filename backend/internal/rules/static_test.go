@@ -3,7 +3,7 @@ package rules
 import (
 	"testing"
 
-	"github.com/simskij/signal-studio/internal/config"
+	"github.com/canonical/signal-studio/internal/config"
 )
 
 func mustParse(t *testing.T, yaml string) *config.CollectorConfig {

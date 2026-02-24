@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/simskij/signal-studio/internal/api"
-	"github.com/simskij/signal-studio/internal/metrics"
-	"github.com/simskij/signal-studio/internal/tap"
+	"github.com/canonical/signal-studio/internal/api"
+	"github.com/canonical/signal-studio/internal/metrics"
+	"github.com/canonical/signal-studio/internal/tap"
 )
 
 func main() {

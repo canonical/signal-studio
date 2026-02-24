@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/simskij/signal-studio/internal/config"
-	"github.com/simskij/signal-studio/internal/filter"
-	"github.com/simskij/signal-studio/internal/tap"
+	"github.com/canonical/signal-studio/internal/config"
+	"github.com/canonical/signal-studio/internal/filter"
+	"github.com/canonical/signal-studio/internal/tap"
 )
 
 func entry(name string, typ tap.MetricType, attrKeys []string, pointCount int64) tap.MetricEntry {

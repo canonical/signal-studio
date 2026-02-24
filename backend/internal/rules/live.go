@@ -5,8 +5,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/simskij/signal-studio/internal/config"
-	"github.com/simskij/signal-studio/internal/metrics"
+	"github.com/canonical/signal-studio/internal/config"
+	"github.com/canonical/signal-studio/internal/metrics"
 )
 
 // LiveRule evaluates a collector config together with live metrics data.
