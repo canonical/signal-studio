@@ -5,8 +5,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/simskij/otel-signal-lens/internal/config"
-	"github.com/simskij/otel-signal-lens/internal/metrics"
+	"github.com/simskij/signal-studio/internal/config"
+	"github.com/simskij/signal-studio/internal/metrics"
 )
 
 // LiveRule evaluates a collector config together with live metrics data.

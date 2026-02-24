@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/simskij/otel-signal-lens/internal/config"
+	"github.com/simskij/signal-studio/internal/config"
 )
 
 // Rule 1: Missing memory_limiter processor
@@ -188,31 +188,54 @@ func (r *MultipleExportersNoRouting) Evaluate(cfg *config.CollectorConfig) []Fin
 		if len(p.Exporters) < 2 {
 			continue
 		}
-		if hasProcessorType(p.Processors, "routing") {
+		if hasRoutingConnector(cfg, p.Exporters) {
 			continue
 		}
 		findings = append(findings, Finding{
 			RuleID:   r.ID(),
 			Title:    fmt.Sprintf("Multiple exporters without routing in %s pipeline", name),
 			Severity: SeverityInfo,
-			Evidence: fmt.Sprintf("Pipeline %q has %d exporters [%s] but no routing processor.",
+			Evidence: fmt.Sprintf("Pipeline %q has %d exporters [%s] but no routing connector.",
 				name, len(p.Exporters), strings.Join(p.Exporters, ", ")),
-			Explanation:  "Multiple exporters receive identical data without a routing processor to direct traffic.",
+			Explanation:  "Multiple exporters receive identical data without a routing connector to direct traffic.",
 			WhyItMatters: "This can unintentionally duplicate telemetry, increase cost, and complicate troubleshooting.",
-			Impact:       "Adding routing or splitting into separate pipelines gives explicit control over data flow.",
-			Snippet: `processors:
+			Impact:       "Adding a routing connector or splitting into separate pipelines gives explicit control over data flow.",
+			Snippet: `connectors:
   routing:
-    default_exporters:
-      - <primary_exporter>
+    match_once: true
+    default_pipelines: [traces/primary]
     table:
-      - statement: route() where attributes["env"] == "production"
-        exporters:
-          - <secondary_exporter>`,
-			Placement: "Add routing processor or split into separate pipelines per exporter.",
+      - condition: attributes["env"] == "production"
+        pipelines: [traces/secondary]
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [routing]
+    traces/primary:
+      receivers: [routing]
+      exporters: [otlp/primary]
+    traces/secondary:
+      receivers: [routing]
+      exporters: [otlp/secondary]`,
+			Placement: "Replace the multi-exporter pipeline with a routing connector that fans out to sub-pipelines.",
 			Pipeline:  name,
 		})
 	}
 	return findings
+}
+
+// hasRoutingConnector checks if any exporter in the list is a routing connector.
+func hasRoutingConnector(cfg *config.CollectorConfig, exporters []string) bool {
+	for _, exp := range exporters {
+		if config.ComponentType(exp) == "routing" {
+			if _, ok := cfg.Connectors[exp]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Rule 10: No log severity filtering
