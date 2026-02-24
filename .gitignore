@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+frontend/dist/
+backend/tmp/
+
+# Test/coverage artifacts
+backend/coverage.out
+*.coverprofile
+
+# TypeScript build info
+*.tsbuildinfo
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
