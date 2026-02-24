@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/simskij/otel-signal-lens/internal/metrics"
+	"github.com/simskij/signal-studio/internal/metrics"
 )
 
 type metricsHandler struct {

@@ -29,6 +29,7 @@ type CollectorConfig struct {
 	Receivers         map[string]ComponentConfig `json:"receivers"`
 	Processors        map[string]ComponentConfig `json:"processors"`
 	Exporters         map[string]ComponentConfig `json:"exporters"`
+	Connectors        map[string]ComponentConfig `json:"connectors,omitempty"`
 	Extensions        map[string]ComponentConfig `json:"extensions,omitempty"`
 	Pipelines         map[string]Pipeline        `json:"pipelines"`
 	ServiceExtensions []string                   `json:"serviceExtensions,omitempty"`

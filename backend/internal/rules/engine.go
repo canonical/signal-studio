@@ -1,6 +1,6 @@
 package rules
 
-import "github.com/simskij/otel-signal-lens/internal/config"
+import "github.com/simskij/signal-studio/internal/config"
 
 // Severity indicates the importance of a finding.
 type Severity string
@@ -62,11 +62,28 @@ func NewDefaultEngine() *Engine {
 		&UndefinedComponentRef{},
 		&EmptyPipeline{},
 		&FilterErrorModePropagateRule{},
+		&ScrapeIntervalMismatch{},
+		&ExporterInsecureTLS{},
+		&NoHealthCheckExtension{},
+		&ExporterEndpointLocalhost{},
+		&ExporterNoCompression{},
+		&TailSamplingWithoutMemoryLimiter{},
+		&ConnectorLoop{},
+		&NoHealthCheckTraceFilter{},
 		// Live rules (require metrics data)
 		&HighDropRate{},
 		&LogVolumeDominance{},
 		&QueueNearCapacity{},
 		&ReceiverExporterMismatch{},
+		// Catalog rules (require tap catalog + filter analyses)
+		&InternalMetricsNotFiltered{},
+		&HighAttributeCount{},
+		&PointCountOutlier{},
+		&FilterKeepsEverything{},
+		&FilterDropsEverything{},
+		&NoFilterHighVolume{},
+		&ManyHistograms{},
+		&ShortScrapeInterval{},
 	)
 }
 

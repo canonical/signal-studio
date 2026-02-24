@@ -11,6 +11,7 @@ type rawConfig struct {
 	Receivers  map[string]any `yaml:"receivers"`
 	Processors map[string]any `yaml:"processors"`
 	Exporters  map[string]any `yaml:"exporters"`
+	Connectors map[string]any `yaml:"connectors"`
 	Extensions map[string]any `yaml:"extensions"`
 	Service    rawService     `yaml:"service"`
 }
@@ -37,6 +38,7 @@ func Parse(data []byte) (*CollectorConfig, error) {
 		Receivers:         parseComponents(raw.Receivers),
 		Processors:        parseComponents(raw.Processors),
 		Exporters:         parseComponents(raw.Exporters),
+		Connectors:        parseComponents(raw.Connectors),
 		Extensions:        parseComponents(raw.Extensions),
 		Pipelines:         make(map[string]Pipeline),
 		ServiceExtensions: raw.Service.Extensions,

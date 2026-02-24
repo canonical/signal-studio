@@ -228,6 +228,48 @@ service:
 	}
 }
 
+func TestParseConnectors(t *testing.T) {
+	yaml := `
+receivers:
+  otlp:
+connectors:
+  routing:
+    match_once: true
+    default_pipelines: [traces/default]
+  routing/env:
+    match_once: true
+    default_pipelines: [traces/prod]
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [routing]
+    traces/default:
+      receivers: [routing]
+      exporters: [debug]
+`
+	cfg, err := Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.Connectors) != 2 {
+		t.Errorf("expected 2 connectors, got %d", len(cfg.Connectors))
+	}
+	if c, ok := cfg.Connectors["routing"]; !ok {
+		t.Error("expected routing connector")
+	} else if c.Type != "routing" {
+		t.Errorf("expected type routing, got %q", c.Type)
+	}
+	if c, ok := cfg.Connectors["routing/env"]; !ok {
+		t.Error("expected routing/env connector")
+	} else if c.Type != "routing" {
+		t.Errorf("expected type routing, got %q", c.Type)
+	}
+}
+
 func TestComponentType(t *testing.T) {
 	tests := []struct {
 		name string

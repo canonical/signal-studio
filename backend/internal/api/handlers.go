@@ -7,14 +7,17 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/simskij/otel-signal-lens/internal/config"
-	"github.com/simskij/otel-signal-lens/internal/metrics"
-	"github.com/simskij/otel-signal-lens/internal/rules"
+	"github.com/simskij/signal-studio/internal/config"
+	"github.com/simskij/signal-studio/internal/filter"
+	"github.com/simskij/signal-studio/internal/metrics"
+	"github.com/simskij/signal-studio/internal/rules"
+	"github.com/simskij/signal-studio/internal/tap"
 )
 
 type analyzeResponse struct {
-	Config   *config.CollectorConfig `json:"config"`
-	Findings []rules.Finding         `json:"findings"`
+	Config         *config.CollectorConfig `json:"config"`
+	Findings       []rules.Finding         `json:"findings"`
+	FilterAnalyses []filter.FilterAnalysis  `json:"filterAnalyses,omitempty"`
 }
 
 type errorResponse struct {
@@ -22,7 +25,8 @@ type errorResponse struct {
 }
 
 type analyzeHandler struct {
-	mgr *metrics.Manager
+	mgr    *metrics.Manager
+	tapMgr *tap.Manager
 }
 
 func (h *analyzeHandler) handleAnalyzeConfig(w http.ResponseWriter, r *http.Request) {
@@ -56,10 +60,32 @@ func (h *analyzeHandler) handleAnalyzeConfig(w http.ResponseWriter, r *http.Requ
 		findings = engine.Evaluate(cfg)
 	}
 
-	writeJSON(w, http.StatusOK, analyzeResponse{
-		Config:   cfg,
-		Findings: findings,
-	})
+	// Compute filter analyses first so they're available for catalog rules
+	var filterAnalyses []filter.FilterAnalysis
+	if h.tapMgr != nil && h.tapMgr.Catalog().Len() > 0 {
+		fcs := filter.ExtractFilterConfigs(cfg)
+		metricNames := h.tapMgr.Catalog().Names()
+		for _, fc := range fcs {
+			if len(fc.Rules) == 0 {
+				continue
+			}
+			filterAnalyses = append(filterAnalyses, filter.AnalyzeFilter(fc, metricNames))
+		}
+	}
+
+	// Evaluate catalog rules when tap catalog has data
+	if h.tapMgr != nil && h.tapMgr.Catalog().Len() > 0 {
+		catalogFindings := engine.EvaluateWithCatalog(cfg, h.tapMgr.Catalog().Entries(), filterAnalyses)
+		findings = append(findings, catalogFindings...)
+	}
+
+	resp := analyzeResponse{
+		Config:         cfg,
+		Findings:       findings,
+		FilterAnalyses: filterAnalyses,
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {

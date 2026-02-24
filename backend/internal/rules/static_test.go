@@ -3,7 +3,7 @@ package rules
 import (
 	"testing"
 
-	"github.com/simskij/otel-signal-lens/internal/config"
+	"github.com/simskij/signal-studio/internal/config"
 )
 
 func mustParse(t *testing.T, yaml string) *config.CollectorConfig {
@@ -254,7 +254,32 @@ service:
 	}
 }
 
-func TestMultipleExporters_PassesWithRouting(t *testing.T) {
+func TestMultipleExporters_PassesWithRoutingConnector(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+connectors:
+  routing:
+    match_once: true
+    default_pipelines: [traces/primary]
+exporters:
+  debug:
+  otlp/backend:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [routing, debug, otlp/backend]
+`)
+	findings := (&MultipleExportersNoRouting{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with routing connector, got %d", len(findings))
+	}
+}
+
+func TestMultipleExporters_FiresWithRoutingProcessor(t *testing.T) {
+	// A routing *processor* (deprecated) should NOT suppress the finding —
+	// only a routing *connector* should.
 	cfg := mustParse(t, `
 receivers:
   otlp:
@@ -271,8 +296,8 @@ service:
       exporters: [debug, otlp/backend]
 `)
 	findings := (&MultipleExportersNoRouting{}).Evaluate(cfg)
-	if len(findings) != 0 {
-		t.Errorf("expected 0 findings with routing, got %d", len(findings))
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding (routing processor is deprecated), got %d", len(findings))
 	}
 }
 
@@ -431,13 +456,14 @@ service:
 	}
 }
 
-func TestMultipleExporters_PassesWithSlashedRouting(t *testing.T) {
+func TestMultipleExporters_PassesWithSlashedRoutingConnector(t *testing.T) {
 	cfg := mustParse(t, `
 receivers:
   otlp:
-processors:
+connectors:
   routing/env:
-    default_exporters: [otlp/primary]
+    match_once: true
+    default_pipelines: [traces/primary]
 exporters:
   otlp/primary:
   otlp/secondary:
@@ -445,13 +471,12 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [routing/env]
-      exporters: [otlp/primary, otlp/secondary]
+      exporters: [routing/env, otlp/primary, otlp/secondary]
 `)
-	// Rule 9: routing/env should satisfy the routing check
+	// Rule 9: routing/env connector should satisfy the routing check
 	findings := (&MultipleExportersNoRouting{}).Evaluate(cfg)
 	if len(findings) != 0 {
-		t.Errorf("expected 0 findings with routing/env, got %d", len(findings))
+		t.Errorf("expected 0 findings with routing/env connector, got %d", len(findings))
 	}
 }
 

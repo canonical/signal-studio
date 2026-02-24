@@ -831,6 +831,52 @@ service:
 	}
 }
 
+func TestUndefinedComponentRef_PassesConnectorAsReceiver(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+connectors:
+  routing:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [routing]
+    traces/default:
+      receivers: [routing]
+      exporters: [debug]
+`)
+	findings := (&UndefinedComponentRef{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when connector used as receiver, got %d", len(findings))
+	}
+}
+
+func TestUndefinedComponentRef_PassesConnectorAsExporter(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+connectors:
+  forward:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [forward]
+    traces/sink:
+      receivers: [forward]
+      exporters: [debug]
+`)
+	findings := (&UndefinedComponentRef{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when connector used as exporter, got %d", len(findings))
+	}
+}
+
 // --- R23: EmptyPipeline ---
 
 func TestEmptyPipeline_FiresNoReceivers(t *testing.T) {
@@ -1070,6 +1116,718 @@ func TestHasNestedBool(t *testing.T) {
 	}
 }
 
+// --- ScrapeIntervalMismatch ---
+
+func TestScrapeIntervalMismatch_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: collector
+          scrape_interval: 15s
+  hostmetrics:
+    collection_interval: 60s
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus, hostmetrics]
+      exporters: [debug]
+`)
+	findings := (&ScrapeIntervalMismatch{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].RuleID != "scrape-interval-mismatch" {
+		t.Errorf("ruleId = %q", findings[0].RuleID)
+	}
+	if findings[0].Severity != SeverityWarning {
+		t.Errorf("severity = %q, want warning", findings[0].Severity)
+	}
+	if findings[0].Pipeline != "metrics" {
+		t.Errorf("pipeline = %q, want metrics", findings[0].Pipeline)
+	}
+}
+
+func TestScrapeIntervalMismatch_NoFire_SameIntervals(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: collector
+          scrape_interval: 60s
+  hostmetrics:
+    collection_interval: 60s
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus, hostmetrics]
+      exporters: [debug]
+`)
+	findings := (&ScrapeIntervalMismatch{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings for same intervals, got %d", len(findings))
+	}
+}
+
+func TestScrapeIntervalMismatch_NoFire_SingleReceiver(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  hostmetrics:
+    collection_interval: 10s
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      exporters: [debug]
+`)
+	findings := (&ScrapeIntervalMismatch{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings for single receiver, got %d", len(findings))
+	}
+}
+
+func TestScrapeIntervalMismatch_NoFire_NonMetricsPipeline(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ScrapeIntervalMismatch{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings for non-metrics pipeline, got %d", len(findings))
+	}
+}
+
+func TestScrapeIntervalMismatch_Fires_MultiplePrometheusJobs(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: fast
+          scrape_interval: 10s
+        - job_name: slow
+          scrape_interval: 60s
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      exporters: [debug]
+`)
+	findings := (&ScrapeIntervalMismatch{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for mismatched prometheus jobs, got %d", len(findings))
+	}
+}
+
+func TestScrapeIntervalMismatch_NoFire_NoIntervalConfigured(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+  prometheus:
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp, prometheus]
+      exporters: [debug]
+`)
+	findings := (&ScrapeIntervalMismatch{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings when no intervals are configured, got %d", len(findings))
+	}
+}
+
+// --- ExporterInsecureTLS ---
+
+func TestExporterInsecureTLS_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+    tls:
+      insecure: true
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterInsecureTLS{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != SeverityCritical {
+		t.Errorf("expected critical severity, got %s", findings[0].Severity)
+	}
+}
+
+func TestExporterInsecureTLS_PassesSecure(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+    tls:
+      insecure: false
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterInsecureTLS{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for secure TLS, got %d", len(findings))
+	}
+}
+
+func TestExporterInsecureTLS_PassesNoTLS(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterInsecureTLS{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when tls not configured, got %d", len(findings))
+	}
+}
+
+func TestExporterInsecureTLS_IgnoresNonNetwork(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ExporterInsecureTLS{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for non-network exporter, got %d", len(findings))
+	}
+}
+
+// --- NoHealthCheckExtension ---
+
+func TestNoHealthCheckExtension_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&NoHealthCheckExtension{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != SeverityWarning {
+		t.Errorf("expected warning severity, got %s", findings[0].Severity)
+	}
+}
+
+func TestNoHealthCheckExtension_PassesDefined(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+extensions:
+  health_check:
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&NoHealthCheckExtension{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with health_check, got %d", len(findings))
+	}
+}
+
+func TestNoHealthCheckExtension_PassesServiceOnly(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&NoHealthCheckExtension{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when health_check in service extensions, got %d", len(findings))
+	}
+}
+
+func TestNoHealthCheckExtension_PassesQualified(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+extensions:
+  health_check/custom:
+    endpoint: 0.0.0.0:8080
+service:
+  extensions: [health_check/custom]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&NoHealthCheckExtension{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for qualified health_check, got %d", len(findings))
+	}
+}
+
+// --- ExporterEndpointLocalhost ---
+
+func TestExporterEndpointLocalhost_FiresLocalhost(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: localhost:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterEndpointLocalhost{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != SeverityInfo {
+		t.Errorf("expected info severity, got %s", findings[0].Severity)
+	}
+}
+
+func TestExporterEndpointLocalhost_Fires127(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: 127.0.0.1:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterEndpointLocalhost{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for 127.0.0.1, got %d", len(findings))
+	}
+}
+
+func TestExporterEndpointLocalhost_FiresWithScheme(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlphttp:
+    endpoint: http://localhost:4318
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlphttp]
+`)
+	findings := (&ExporterEndpointLocalhost{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for http://localhost, got %d", len(findings))
+	}
+}
+
+func TestExporterEndpointLocalhost_PassesRemote(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend.example.com:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterEndpointLocalhost{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for remote endpoint, got %d", len(findings))
+	}
+}
+
+func TestExporterEndpointLocalhost_IgnoresNonNetwork(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ExporterEndpointLocalhost{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for non-network exporter, got %d", len(findings))
+	}
+}
+
+// --- ExporterNoCompression ---
+
+func TestExporterNoCompression_FiresNone(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+    compression: none
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterNoCompression{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != SeverityInfo {
+		t.Errorf("expected info severity, got %s", findings[0].Severity)
+	}
+}
+
+func TestExporterNoCompression_PassesGzip(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+    compression: gzip
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterNoCompression{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with gzip, got %d", len(findings))
+	}
+}
+
+func TestExporterNoCompression_PassesDefault(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterNoCompression{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when compression not set (defaults to gzip), got %d", len(findings))
+	}
+}
+
+func TestExporterNoCompression_IgnoresNonNetwork(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ExporterNoCompression{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for non-network exporter, got %d", len(findings))
+	}
+}
+
+// --- TailSamplingWithoutMemoryLimiter ---
+
+func TestTailSamplingWithoutMemoryLimiter_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  tail_sampling:
+    decision_wait: 10s
+    policies:
+      - name: error
+        type: status_code
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [tail_sampling]
+      exporters: [otlp/backend]
+`)
+	findings := (&TailSamplingWithoutMemoryLimiter{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != SeverityWarning {
+		t.Errorf("expected warning severity, got %s", findings[0].Severity)
+	}
+	if findings[0].Pipeline != "traces" {
+		t.Errorf("expected pipeline traces, got %s", findings[0].Pipeline)
+	}
+}
+
+func TestTailSamplingWithoutMemoryLimiter_PassesWithMemoryLimiter(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+  tail_sampling:
+    decision_wait: 10s
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, tail_sampling]
+      exporters: [otlp/backend]
+`)
+	findings := (&TailSamplingWithoutMemoryLimiter{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with memory_limiter present, got %d", len(findings))
+	}
+}
+
+func TestTailSamplingWithoutMemoryLimiter_IgnoresNonTraces(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  tail_sampling:
+    decision_wait: 10s
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [tail_sampling]
+      exporters: [debug]
+`)
+	findings := (&TailSamplingWithoutMemoryLimiter{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for non-traces pipeline, got %d", len(findings))
+	}
+}
+
+func TestTailSamplingWithoutMemoryLimiter_NoTailSampling(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  batch:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+	findings := (&TailSamplingWithoutMemoryLimiter{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when no tail_sampling, got %d", len(findings))
+	}
+}
+
+// --- ConnectorLoop ---
+
+func TestConnectorLoop_FiresDirectLoop(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+connectors:
+  routing:
+    match_once: true
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp, routing]
+      exporters: [routing, debug]
+`)
+	findings := (&ConnectorLoop{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for direct self-loop, got %d", len(findings))
+	}
+	if findings[0].Severity != SeverityCritical {
+		t.Errorf("expected critical severity, got %s", findings[0].Severity)
+	}
+}
+
+func TestConnectorLoop_FiresIndirectLoop(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+connectors:
+  forward/a:
+  forward/b:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [forward/a]
+    traces/middle:
+      receivers: [forward/a]
+      exporters: [forward/b]
+    traces/end:
+      receivers: [forward/b]
+      exporters: [forward/a, debug]
+`)
+	findings := (&ConnectorLoop{}).Evaluate(cfg)
+	if len(findings) == 0 {
+		t.Fatal("expected at least 1 finding for indirect loop")
+	}
+}
+
+func TestConnectorLoop_PassesNoLoop(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+connectors:
+  routing:
+    match_once: true
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [routing]
+    traces/default:
+      receivers: [routing]
+      exporters: [debug]
+`)
+	findings := (&ConnectorLoop{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for acyclic graph, got %d", len(findings))
+	}
+}
+
+func TestConnectorLoop_PassesNoConnectors(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ConnectorLoop{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when no connectors, got %d", len(findings))
+	}
+}
+
+// --- isLocalhostEndpoint ---
+
+func TestIsLocalhostEndpoint(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"localhost:4317", true},
+		{"127.0.0.1:4317", true},
+		{"http://localhost:4318", true},
+		{"https://localhost:4318", true},
+		{"http://127.0.0.1:4318", true},
+		{"[::1]:4317", true},
+		{"backend:4317", false},
+		{"example.com:4317", false},
+		{"https://example.com:4317", false},
+	}
+	for _, tc := range tests {
+		got := isLocalhostEndpoint(tc.input)
+		if got != tc.want {
+			t.Errorf("isLocalhostEndpoint(%q) = %v, want %v", tc.input, got, tc.want)
+		}
+	}
+}
+
 // --- Updated DefaultEngine integration ---
 
 func TestDefaultEngineExtendedRules(t *testing.T) {
@@ -1134,10 +1892,152 @@ service:
 		"exporter-no-sending-queue",
 		"exporter-no-retry",
 		"filter-error-mode-propagate",
+		"no-health-check-trace-filter",
 	}
 	for _, r := range expectedNewRules {
 		if ruleHits[r] == 0 {
 			t.Errorf("expected at least one finding from new rule %q", r)
 		}
+	}
+}
+
+func TestNoHealthCheckTraceFilter_FiresNoFilter(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+    protocols:
+      grpc:
+processors:
+  batch:
+exporters:
+  otlp:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp]
+`)
+	rule := &NoHealthCheckTraceFilter{}
+	findings := rule.Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Pipeline != "traces" {
+		t.Errorf("expected pipeline traces, got %s", findings[0].Pipeline)
+	}
+}
+
+func TestNoHealthCheckTraceFilter_PassesWithFilter(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+    protocols:
+      grpc:
+processors:
+  batch:
+  filter/health:
+    traces:
+      span:
+        - 'attributes["url.path"] == "/healthz"'
+        - 'attributes["url.path"] == "/readyz"'
+exporters:
+  otlp:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/health, batch]
+      exporters: [otlp]
+`)
+	rule := &NoHealthCheckTraceFilter{}
+	findings := rule.Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with health filter, got %d", len(findings))
+	}
+}
+
+func TestNoHealthCheckTraceFilter_SkipsNonTraces(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+    protocols:
+      grpc:
+processors:
+  batch:
+exporters:
+  otlp:
+    endpoint: backend:4317
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp]
+`)
+	rule := &NoHealthCheckTraceFilter{}
+	findings := rule.Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for metrics pipeline, got %d", len(findings))
+	}
+}
+
+func TestNoHealthCheckTraceFilter_PassesWithLivez(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+    protocols:
+      grpc:
+processors:
+  batch:
+  filter/probes:
+    traces:
+      span:
+        - 'attributes["http.route"] == "/livez"'
+exporters:
+  otlp:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/probes, batch]
+      exporters: [otlp]
+`)
+	rule := &NoHealthCheckTraceFilter{}
+	findings := rule.Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with /livez filter, got %d", len(findings))
+	}
+}
+
+func TestNoHealthCheckTraceFilter_FiresFilterWithoutTraces(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+    protocols:
+      grpc:
+processors:
+  batch:
+  filter/metrics:
+    metrics:
+      metric:
+        - 'name == "unwanted"'
+exporters:
+  otlp:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/metrics, batch]
+      exporters: [otlp]
+`)
+	rule := &NoHealthCheckTraceFilter{}
+	findings := rule.Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding (filter has no traces config), got %d", len(findings))
 	}
 }
