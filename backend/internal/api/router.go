@@ -5,14 +5,15 @@ import (
 	"os"
 	"strings"
 
-	"github.com/simskij/otel-signal-lens/internal/metrics"
+	"github.com/simskij/signal-studio/internal/metrics"
+	"github.com/simskij/signal-studio/internal/tap"
 )
 
 // NewRouter creates the HTTP handler with all routes.
-func NewRouter(mgr *metrics.Manager) http.Handler {
+func NewRouter(mgr *metrics.Manager, tapMgr *tap.Manager) http.Handler {
 	mux := http.NewServeMux()
 
-	ah := &analyzeHandler{mgr: mgr}
+	ah := &analyzeHandler{mgr: mgr, tapMgr: tapMgr}
 	mux.HandleFunc("POST /api/config/analyze", ah.handleAnalyzeConfig)
 	mux.HandleFunc("GET /api/health", handleHealth)
 
@@ -21,6 +22,13 @@ func NewRouter(mgr *metrics.Manager) http.Handler {
 	mux.HandleFunc("POST /api/metrics/disconnect", mh.handleDisconnect)
 	mux.HandleFunc("GET /api/metrics/snapshot", mh.handleSnapshot)
 	mux.HandleFunc("GET /api/metrics/status", mh.handleStatus)
+
+	th := &tapHandler{mgr: tapMgr}
+	mux.HandleFunc("POST /api/tap/start", th.handleStart)
+	mux.HandleFunc("POST /api/tap/stop", th.handleStop)
+	mux.HandleFunc("GET /api/tap/status", th.handleStatus)
+	mux.HandleFunc("GET /api/tap/catalog", th.handleCatalog)
+	mux.HandleFunc("POST /api/tap/reset", th.handleReset)
 
 	return corsMiddleware(mux)
 }
