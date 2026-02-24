@@ -183,10 +183,42 @@ const (
 	MetricExporterQueueCapacity        = "otelcol_exporter_queue_capacity"
 )
 
+// WindowRatePerSecond computes the per-second rate across the full snapshot
+// window. Returns 0 until at least minElapsed has passed between the oldest
+// and newest snapshot, preventing inflated rates during warm-up.
+const minWindowElapsed = 15 * time.Second
+
+func WindowRatePerSecond(store *Store, name string, labels map[string]string) float64 {
+	window := store.Window()
+	if len(window) < 2 {
+		return 0
+	}
+
+	oldest := window[0]
+	newest := window[len(window)-1]
+
+	elapsed := newest.CollectedAt.Sub(oldest.CollectedAt)
+	if elapsed < minWindowElapsed {
+		return 0
+	}
+
+	oldVal, oldOk := lookupValue(oldest, name, labels)
+	newVal, newOk := lookupValue(newest, name, labels)
+	if !oldOk || !newOk {
+		return 0
+	}
+
+	// Counter reset — fall back to latest two
+	if newVal < oldVal {
+		return RatePerSecond(window[len(window)-2], newest, name, labels)
+	}
+
+	return (newVal - oldVal) / elapsed.Seconds()
+}
+
 // ComputeSnapshot calculates rates and derived metrics from the store.
 func ComputeSnapshot(store *Store, status string) *ComputedSnapshot {
 	curr := store.Latest()
-	prev := store.Previous()
 
 	cs := &ComputedSnapshot{
 		Status:    status,
@@ -208,9 +240,9 @@ func ComputeSnapshot(store *Store, status string) *ComputedSnapshot {
 	for _, recv := range receivers {
 		lbls := map[string]string{"receiver": recv}
 		cs.Receivers[recv] = &ReceiverMetrics{
-			AcceptedSpansRate:     RatePerSecond(prev, curr, MetricReceiverAcceptedSpans, lbls),
-			AcceptedMetricPtsRate: RatePerSecond(prev, curr, MetricReceiverAcceptedMetricPoints, lbls),
-			AcceptedLogRecsRate:   RatePerSecond(prev, curr, MetricReceiverAcceptedLogRecords, lbls),
+			AcceptedSpansRate:     WindowRatePerSecond(store, MetricReceiverAcceptedSpans, lbls),
+			AcceptedMetricPtsRate: WindowRatePerSecond(store, MetricReceiverAcceptedMetricPoints, lbls),
+			AcceptedLogRecsRate:   WindowRatePerSecond(store, MetricReceiverAcceptedLogRecords, lbls),
 		}
 	}
 
@@ -227,38 +259,38 @@ func ComputeSnapshot(store *Store, status string) *ComputedSnapshot {
 			QueueSize:           qSize,
 			QueueCapacity:       qCap,
 			QueueUtilizationPct: utilPct,
-			SentSpansRate:       RatePerSecond(prev, curr, MetricExporterSentSpans, lbls),
-			SentMetricPtsRate:   RatePerSecond(prev, curr, MetricExporterSentMetricPoints, lbls),
-			SentLogRecsRate:     RatePerSecond(prev, curr, MetricExporterSentLogRecords, lbls),
-			FailedSpansRate:     RatePerSecond(prev, curr, MetricExporterSendFailedSpans, lbls),
+			SentSpansRate:       WindowRatePerSecond(store, MetricExporterSentSpans, lbls),
+			SentMetricPtsRate:   WindowRatePerSecond(store, MetricExporterSentMetricPoints, lbls),
+			SentLogRecsRate:     WindowRatePerSecond(store, MetricExporterSentLogRecords, lbls),
+			FailedSpansRate:     WindowRatePerSecond(store, MetricExporterSendFailedSpans, lbls),
 		}
 	}
 
 	// Aggregate signal-level metrics
-	cs.Signals["traces"] = aggregateSignalMetrics(prev, curr,
+	cs.Signals["traces"] = aggregateSignalMetrics(store,
 		MetricReceiverAcceptedSpans, MetricExporterSentSpans, MetricExporterSendFailedSpans,
 		receivers, exporters)
-	cs.Signals["metrics"] = aggregateSignalMetrics(prev, curr,
+	cs.Signals["metrics"] = aggregateSignalMetrics(store,
 		MetricReceiverAcceptedMetricPoints, MetricExporterSentMetricPoints, MetricExporterSendFailedMetricPts,
 		receivers, exporters)
-	cs.Signals["logs"] = aggregateSignalMetrics(prev, curr,
+	cs.Signals["logs"] = aggregateSignalMetrics(store,
 		MetricReceiverAcceptedLogRecords, MetricExporterSentLogRecords, MetricExporterSendFailedLogRecs,
 		receivers, exporters)
 
 	return cs
 }
 
-func aggregateSignalMetrics(prev, curr *Snapshot, acceptedMetric, sentMetric, failedMetric string, receivers, exporters []string) *SignalMetrics {
+func aggregateSignalMetrics(store *Store, acceptedMetric, sentMetric, failedMetric string, receivers, exporters []string) *SignalMetrics {
 	sm := &SignalMetrics{}
 
 	for _, recv := range receivers {
 		lbls := map[string]string{"receiver": recv}
-		sm.ReceiverAcceptedRate += RatePerSecond(prev, curr, acceptedMetric, lbls)
+		sm.ReceiverAcceptedRate += WindowRatePerSecond(store, acceptedMetric, lbls)
 	}
 	for _, exp := range exporters {
 		lbls := map[string]string{"exporter": exp}
-		sm.ExporterSentRate += RatePerSecond(prev, curr, sentMetric, lbls)
-		sm.ExporterFailedRate += RatePerSecond(prev, curr, failedMetric, lbls)
+		sm.ExporterSentRate += WindowRatePerSecond(store, sentMetric, lbls)
+		sm.ExporterFailedRate += WindowRatePerSecond(store, failedMetric, lbls)
 	}
 
 	if sm.ReceiverAcceptedRate > 0 {
