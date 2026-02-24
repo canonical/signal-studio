@@ -1,11 +1,11 @@
-import { useRef } from "react";
+import { useRef, useCallback } from "react";
 import Editor, { type OnMount, type BeforeMount } from "@monaco-editor/react";
 import type { editor as monacoEditor } from "monaco-editor";
 import jsYaml from "js-yaml";
 
 const VANILLA_DARK_BG = "#262626";
 
-const PLACEHOLDER = `# Paste your OTel Collector config here
+export const PLACEHOLDER = `# Paste your OTel Collector config here
 receivers:
   otlp:
     protocols:
@@ -61,6 +61,37 @@ export function ConfigInput({
   loading,
 }: ConfigInputProps) {
   const editorRef = useRef<monacoEditor.IStandaloneCodeEditor | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUpload = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = reader.result as string;
+        const pretty = prettyPrintYaml(text);
+        onYamlChange(pretty ?? text);
+      };
+      reader.readAsText(file);
+      e.target.value = "";
+    },
+    [onYamlChange],
+  );
+
+  const handleDownload = useCallback(() => {
+    const blob = new Blob([yaml], { type: "text/yaml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "collector-config.yaml";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [yaml]);
 
   const handleBeforeMount: BeforeMount = (monaco) => {
     monaco.editor.defineTheme("vanilla-dark", {
@@ -113,19 +144,55 @@ export function ConfigInput({
                 d="m55.7,216.8c.66-.04,1.33-.05,1.99-.05,2.64,0,5.28.28,7.89.84,4.26.91,8.27,2.53,11.93,4.8,11.77-16.92,30.75-27.08,51.32-27.45.11-1.97.37-3.95.79-5.88,1.2-5.6,3.65-10.83,7.14-15.31-32.86-2.6-64.8,14.36-81.06,43.05Z"
               />
             </svg>
-            Telemetry Studio
+            Signal Studio
           </span>
         </h4>
         <div className="p-panel__controls">
-          <label className="p-checkbox--inline u-no-margin--bottom">
-            <input
-              type="checkbox"
-              className="p-checkbox__input"
-              checked={liveMode}
-              onChange={(e) => onLiveModeChange(e.target.checked)}
-            />
-            <span className="p-checkbox__label">Live</span>
-          </label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".yaml,.yml"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
+          <button
+            className="live-toggle__btn"
+            onClick={handleUpload}
+            title="Open YAML file"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+          <button
+            className="live-toggle__btn"
+            onClick={handleDownload}
+            title="Save YAML file"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
+              <path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" />
+              <path d="M7 3v4a1 1 0 0 0 1 1h7" />
+            </svg>
+          </button>
+          <button
+            className="live-toggle__btn"
+            onClick={() => onLiveModeChange(!liveMode)}
+            title={liveMode ? "Pause live analysis" : "Resume live analysis"}
+          >
+            {liveMode ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+                <line x1="2" y1="2" x2="22" y2="22" />
+              </svg>
+            )}
+          </button>
         </div>
       </div>
       <div className="p-panel__content editor-content">

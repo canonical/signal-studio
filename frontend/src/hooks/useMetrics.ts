@@ -11,6 +11,8 @@ interface UseMetricsResult {
   disconnect: () => Promise<void>;
 }
 
+const LS_CONNECTED = "signal-studio:metrics-connected";
+
 export function useMetrics(): UseMetricsResult {
   const [status, setStatus] = useState<MetricsStatus>("disconnected");
   const [snapshot, setSnapshot] = useState<MetricsSnapshot | null>(null);
@@ -56,9 +58,11 @@ export function useMetrics(): UseMetricsResult {
         throw new Error(body.error || `HTTP ${res.status}`);
       }
       setStatus("connected");
+      localStorage.setItem(LS_CONNECTED, "1");
       startPolling();
     } catch (e) {
       setStatus("error");
+      localStorage.removeItem(LS_CONNECTED);
       setError(e instanceof Error ? e.message : "Connection failed");
     }
   }, [startPolling]);
@@ -73,7 +77,35 @@ export function useMetrics(): UseMetricsResult {
     setStatus("disconnected");
     setSnapshot(null);
     setError(null);
+    localStorage.removeItem(LS_CONNECTED);
   }, [stopPolling]);
+
+  // Restore connection on mount if previously connected
+  useEffect(() => {
+    if (localStorage.getItem(LS_CONNECTED) !== "1") return;
+    (async () => {
+      try {
+        const res = await fetch("/api/metrics/snapshot");
+        if (!res.ok) throw new Error();
+        const data: MetricsSnapshot = await res.json();
+        if (data.status === "connected") {
+          setStatus("connected");
+          setSnapshot(data);
+          startPolling();
+          return;
+        }
+      } catch {
+        // Backend not reachable or lost state — try reconnecting
+      }
+      // Backend lost the connection — reconnect with saved URL
+      const url = localStorage.getItem("signal-studio:metrics-url");
+      if (url) {
+        connect(url);
+      } else {
+        localStorage.removeItem(LS_CONNECTED);
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cleanup on unmount
   useEffect(() => stopPolling, [stopPolling]);
