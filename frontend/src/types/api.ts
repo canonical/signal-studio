@@ -43,6 +43,41 @@ export interface ErrorResponse {
   error: string;
 }
 
+// Metrics types
+
+export type MetricsStatus = "disconnected" | "connecting" | "connected" | "error";
+
+export interface SignalMetrics {
+  receiverAcceptedRate: number;
+  exporterSentRate: number;
+  exporterFailedRate: number;
+  dropRatePct: number;
+}
+
+export interface ExporterMetrics {
+  queueSize: number;
+  queueCapacity: number;
+  queueUtilizationPct: number;
+  sentSpansRate: number;
+  sentMetricPointsRate: number;
+  sentLogRecordsRate: number;
+  failedSpansRate: number;
+}
+
+export interface ReceiverMetrics {
+  acceptedSpansRate: number;
+  acceptedMetricPointsRate: number;
+  acceptedLogRecordsRate: number;
+}
+
+export interface MetricsSnapshot {
+  status: MetricsStatus;
+  collectedAt: string;
+  signals: Record<string, SignalMetrics>;
+  exporters: Record<string, ExporterMetrics>;
+  receivers: Record<string, ReceiverMetrics>;
+}
+
 /** Extract the base type from a component name (e.g. "filter/info" → "filter"). */
 export function componentType(name: string): string {
   const idx = name.indexOf("/");

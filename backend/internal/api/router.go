@@ -4,14 +4,23 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/simskij/otel-signal-lens/internal/metrics"
 )
 
 // NewRouter creates the HTTP handler with all routes.
-func NewRouter() http.Handler {
+func NewRouter(mgr *metrics.Manager) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /api/config/analyze", handleAnalyzeConfig)
+	ah := &analyzeHandler{mgr: mgr}
+	mux.HandleFunc("POST /api/config/analyze", ah.handleAnalyzeConfig)
 	mux.HandleFunc("GET /api/health", handleHealth)
+
+	mh := &metricsHandler{mgr: mgr}
+	mux.HandleFunc("POST /api/metrics/connect", mh.handleConnect)
+	mux.HandleFunc("POST /api/metrics/disconnect", mh.handleDisconnect)
+	mux.HandleFunc("GET /api/metrics/snapshot", mh.handleSnapshot)
+	mux.HandleFunc("GET /api/metrics/status", mh.handleStatus)
 
 	return corsMiddleware(mux)
 }

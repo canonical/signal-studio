@@ -62,6 +62,11 @@ func NewDefaultEngine() *Engine {
 		&UndefinedComponentRef{},
 		&EmptyPipeline{},
 		&FilterErrorModePropagateRule{},
+		// Live rules (require metrics data)
+		&HighDropRate{},
+		&LogVolumeDominance{},
+		&QueueNearCapacity{},
+		&ReceiverExporterMismatch{},
 	)
 }
 

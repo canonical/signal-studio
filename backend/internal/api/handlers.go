@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/simskij/otel-signal-lens/internal/config"
+	"github.com/simskij/otel-signal-lens/internal/metrics"
 	"github.com/simskij/otel-signal-lens/internal/rules"
 )
 
@@ -20,7 +21,11 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-func handleAnalyzeConfig(w http.ResponseWriter, r *http.Request) {
+type analyzeHandler struct {
+	mgr *metrics.Manager
+}
+
+func (h *analyzeHandler) handleAnalyzeConfig(w http.ResponseWriter, r *http.Request) {
 	maxSize := 256 // default KB
 	if v := os.Getenv("MAX_YAML_SIZE_KB"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -41,7 +46,15 @@ func handleAnalyzeConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	engine := rules.NewDefaultEngine()
-	findings := engine.Evaluate(cfg)
+
+	// Use live rules when metrics are connected
+	var findings []rules.Finding
+	status, _ := h.mgr.Status()
+	if status == metrics.StatusConnected {
+		findings = engine.EvaluateWithMetrics(cfg, h.mgr.Store())
+	} else {
+		findings = engine.Evaluate(cfg)
+	}
 
 	writeJSON(w, http.StatusOK, analyzeResponse{
 		Config:   cfg,
