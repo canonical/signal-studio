@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AnalyzeResponse } from "./types/api";
+import type { AnalyzeResponse, Finding } from "./types/api";
 import { useDebounce } from "./hooks/useDebounce";
+import { useMetrics } from "./hooks/useMetrics";
 import { ConfigInput } from "./components/ConfigInput";
 import { FindingsPanel } from "./components/FindingsPanel";
-import { PipelineGraph } from "./components/PipelineGraph";
+import { MetricsConnection } from "./components/MetricsConnection";
+import { PipelineGraph, rulesForRole, type CardFilter } from "./components/PipelineGraph";
 
 const DEBOUNCE_MS = 500;
 
@@ -15,6 +17,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [liveMode, setLiveMode] = useState(true);
+  const [cardFilter, setCardFilter] = useState<CardFilter | null>(null);
+  const metrics = useMetrics();
 
   useEffect(() => {
     localStorage.setItem("otel-signal-lens:yaml", yaml);
@@ -61,6 +65,16 @@ export default function App() {
 
   const findings = result?.findings ?? [];
 
+  const filteredFindings: Finding[] = cardFilter
+    ? findings.filter((f) => {
+        const ruleSet = rulesForRole(cardFilter.role);
+        return (
+          ruleSet.includes(f.ruleId) &&
+          (f.pipeline === cardFilter.pipeline || !f.pipeline)
+        );
+      })
+    : findings;
+
   return (
     <div className="l-application">
       <nav className="l-navigation is-dark">
@@ -80,6 +94,14 @@ export default function App() {
         <div className="p-panel">
           <div className="p-panel__header is-sticky">
             <h4 className="p-panel__title">Pipelines</h4>
+            <div className="p-panel__controls">
+              <MetricsConnection
+                status={metrics.status}
+                error={metrics.error}
+                onConnect={metrics.connect}
+                onDisconnect={metrics.disconnect}
+              />
+            </div>
           </div>
           <div className="p-panel__content pipeline-panel-content">
             {error && (
@@ -90,7 +112,13 @@ export default function App() {
               </div>
             )}
             {result ? (
-              <PipelineGraph config={result.config} />
+              <PipelineGraph
+                config={result.config}
+                findings={findings}
+                activeFilter={cardFilter}
+                onFilterChange={setCardFilter}
+                metricsSnapshot={metrics.snapshot}
+              />
             ) : (
               <p className="u-text--muted">
                 Paste a collector configuration to visualize pipelines.
@@ -104,12 +132,21 @@ export default function App() {
         <div className="p-panel">
           <div className="p-panel__header is-sticky">
             <h4 className="p-panel__title">
-              Recommendations{findings.length > 0 && ` (${findings.length})`}
+              Recommendations{filteredFindings.length > 0 && ` (${filteredFindings.length})`}
             </h4>
           </div>
           <div className="p-panel__content">
+            {cardFilter && (
+              <button
+                className="p-button--base is-small u-no-margin--bottom"
+                style={{ marginBottom: "0.5rem" }}
+                onClick={() => setCardFilter(null)}
+              >
+                Remove filter
+              </button>
+            )}
             {result ? (
-              <FindingsPanel findings={findings} />
+              <FindingsPanel findings={filteredFindings} />
             ) : (
               <p className="u-text--muted">
                 Recommendations will appear here.
