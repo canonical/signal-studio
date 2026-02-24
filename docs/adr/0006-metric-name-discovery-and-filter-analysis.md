@@ -8,7 +8,7 @@
 
 ## Context
 
-Today Signal Lens understands two things about a Collector: its pipeline structure (from parsed YAML) and its aggregate throughput (from Prometheus self-observability metrics). What it does **not** know is *which* metric names are actually flowing through those pipelines.
+Today Signal Studio understands two things about a Collector: its pipeline structure (from parsed YAML) and its aggregate throughput (from Prometheus self-observability metrics). What it does **not** know is *which* metric names are actually flowing through those pipelines.
 
 This is a significant gap. When a user is considering a `filter` processor to reduce metric volume, the most natural questions are:
 
@@ -63,13 +63,13 @@ If the Collector exports metrics to a Prometheus-compatible backend, we could qu
 
 ### C. OTLP Mirror Receiver
 
-Add a lightweight OTLP receiver to the Signal Lens backend. The user configures their Collector to fan out a copy of traffic to Signal Lens via an additional `otlp` exporter in the pipeline. Signal Lens receives the OTLP data, extracts metric metadata (names, types, attribute keys), and discards the actual data points.
+Add a lightweight OTLP receiver to the Signal Studio backend. The user configures their Collector to fan out a copy of traffic to Signal Studio via an additional `otlp` exporter in the pipeline. Signal Studio receives the OTLP data, extracts metric metadata (names, types, attribute keys), and discards the actual data points.
 
 ```
 Collector pipeline:
   receivers: [otlp]
   processors: [batch]
-  exporters: [otlp/backend, otlp/signal-lens]   ← fan-out
+  exporters: [otlp/backend, otlp/signal-studio]   ← fan-out
 ```
 
 **Pros:**
@@ -83,13 +83,13 @@ Collector pipeline:
 - Requires modifying the Collector config to add the fan-out exporter — no longer fully non-intrusive
 - Crosses the ADR-0001 boundary of "will not ingest OTLP data" — this is a deliberate scope extension
 - Increases Collector resource usage (CPU, memory, network) proportional to the pipeline's volume
-- Signal Lens backend becomes stateful (holding metric name catalog in memory)
-- Must handle backpressure — if Signal Lens is slow, the Collector's sending queue for this exporter backs up
+- Signal Studio backend becomes stateful (holding metric name catalog in memory)
+- Must handle backpressure — if Signal Studio is slow, the Collector's sending queue for this exporter backs up
 - OTLP parsing adds a non-trivial dependency (`go.opentelemetry.io/collector/pdata` or raw protobuf)
 
 ### D. Debug Exporter Log Parsing
 
-The Collector's `debug` exporter (formerly `logging`) outputs telemetry details to stdout. Signal Lens could read the Collector's log output (via a log file, Docker logs API, or Kubernetes log stream) and parse metric names from it.
+The Collector's `debug` exporter (formerly `logging`) outputs telemetry details to stdout. Signal Studio could read the Collector's log output (via a log file, Docker logs API, or Kubernetes log stream) and parse metric names from it.
 
 **Pros:**
 - No Collector config change beyond enabling/adjusting the debug exporter
@@ -122,12 +122,12 @@ The OpenTelemetry Collector community has discussed adding per-metric-name telem
 
 ### F. Periodic OTLP Sampling Tap
 
-A variant of Option C that reduces the resource impact: instead of receiving all traffic, Signal Lens instructs the Collector to send only a periodic sample. This could be achieved by placing a `probabilistic_sampler` processor before the fan-out exporter, or by having Signal Lens accept traffic for short windows (e.g., 10 seconds every 5 minutes) and disconnect in between.
+A variant of Option C that reduces the resource impact: instead of receiving all traffic, Signal Studio instructs the Collector to send only a periodic sample. This could be achieved by placing a `probabilistic_sampler` processor before the fan-out exporter, or by having Signal Studio accept traffic for short windows (e.g., 10 seconds every 5 minutes) and disconnect in between.
 
 **Pros:**
 - Dramatically lower resource overhead than full mirroring
 - A short sample window is often sufficient to discover metric names (names change slowly; volume is what fluctuates)
-- Signal Lens controls when it listens, limiting its own resource use
+- Signal Studio controls when it listens, limiting its own resource use
 
 **Cons:**
 - Same Collector config modification requirement as Option C
@@ -167,7 +167,7 @@ filter:
 
 Parse the filter config's `metric_names` patterns. If metric names are known (from any discovery mechanism), test each name against the patterns and report the match set. This works for both literal and regexp `metric_names`.
 
-This level is useful even without live metric discovery — if the user's Collector exports to a Prometheus backend they can query separately, they could paste a metric name list into Signal Lens.
+This level is useful even without live metric discovery — if the user's Collector exports to a Prometheus backend they can query separately, they could paste a metric name list into Signal Studio.
 
 **Level 2 — Volume-weighted matching (requires per-name volume data)**
 
@@ -189,11 +189,11 @@ The attribution problem (see Option B verdict) rules out backend querying as a r
 
 Accept the ADR-0001 scope extension and implement the OTLP sampling tap (Option F) as the primary discovery mechanism. This is the only approach that provides attributed, per-Collector metric name visibility without depending on upstream Collector changes.
 
-- Lightweight OTLP gRPC receiver in the Signal Lens backend
+- Lightweight OTLP gRPC receiver in the Signal Studio backend
 - Metadata extraction only: metric names, types, attribute keys, approximate point counts
 - No data point storage — metadata is held in memory with a TTL
 - Windowed approach: accept data for configurable intervals (default 30s every 5 minutes) to limit resource impact
-- Generate a "Connect to Signal Lens" snippet that the user adds to their Collector config — Signal Lens already generates YAML snippets, so this fits the existing UX pattern
+- Generate a "Connect to Signal Studio" snippet that the user adds to their Collector config — Signal Studio already generates YAML snippets, so this fits the existing UX pattern
 - Clearly document this as opt-in and requiring a Collector config change
 - Implement Level 1 filter matching: parse `filter` processor configs from the Collector YAML, test discovered metric names against patterns, and show predicted keep/drop sets
 
@@ -237,11 +237,13 @@ When a pipeline contains a `filter` processor and metric names are available:
 
 ## Open Questions
 
-1. **Collector config friction** — The OTLP tap requires modifying the Collector config. How do we minimize the barrier? Auto-generating a ready-to-paste snippet helps, but some organizations have strict change control around Collector configs. Is there a way to make this zero-config for common deployment patterns (e.g., Helm chart annotations)?
-2. **Attribute-level analysis** — Metric name filtering covers the most common case, but attribute-based filtering (`where attributes["service.name"] == "foo"`) requires attribute key discovery. The OTLP tap can extract attribute keys — should attribute-level filter matching be included in Phase 1 or deferred?
-3. **OTTL support boundary** — What subset of OTTL expressions should filter matching support? `name ==` and `IsMatch(name, ...)` cover most cases, but users may expect broader support.
-4. **Resource overhead transparency** — How should we communicate the performance cost of the sampling tap to users? Should Signal Lens estimate the additional load based on observed throughput?
-5. **gRPC dependency** — Adding an OTLP gRPC receiver pulls in `google.golang.org/grpc` and related protobuf dependencies. What is the binary size and build time impact?
+1. ~~**Collector config friction**~~ — **Resolved.** Manual config patching via a generated snippet is acceptable for the MVP. The tool already centers on copy-paste YAML snippets, so this is a familiar interaction. Zero-config approaches (Helm annotations, auto-injection) can be explored post-MVP if adoption warrants it.
+2. ~~**Attribute-level analysis**~~ — **Resolved.** Deferred. Metric name matching covers the most common filtering use case. Attribute-level filter matching can be added later since the OTLP tap already has access to attribute keys.
+3. ~~**OTTL support boundary**~~ — **Resolved.** Out of scope for this ADR. OTTL expression evaluation depth is a rule engine concern; see ADR-0004. This ADR provides the metric name catalog; how rules consume it is a separate decision.
+4. ~~**Resource overhead transparency**~~ — **Resolved.** Yes. Signal Studio should estimate the additional Collector overhead based on observed throughput and display it when the user sets up the tap. This helps users make an informed decision before adding the fan-out exporter.
+5. **gRPC dependency** — Adding an OTLP gRPC receiver pulls in `google.golang.org/grpc` and related protobuf dependencies. The dependency is accepted, but the actual binary size and build time impact must be measured during implementation and recorded here.
+   - **Binary size delta:** 12.6 MB → 21.0 MB (+8.4 MB / +67%). Primarily from `google.golang.org/grpc` and `go.opentelemetry.io/collector/pdata` (protobuf, gRPC runtime).
+   - **Build time delta:** Negligible increase (~1-2s on clean build).
 
 ---
 
@@ -260,7 +262,7 @@ When a pipeline contains a `filter` processor and metric names are available:
 - Crosses the ADR-0001 scope boundary by ingesting OTLP data, even if only metadata — this is the most significant philosophical change since the project's inception
 - Requires a Collector config change (adding a fan-out exporter), making the tool no longer fully non-intrusive
 - Adds gRPC and protobuf dependencies, increasing binary size and build complexity
-- Signal Lens backend becomes stateful (holding an in-memory metric name catalog), adding lifecycle concerns
-- Must handle backpressure correctly — if Signal Lens is slow or unavailable, the Collector's sending queue for the tap exporter must not impact production pipelines
+- Signal Studio backend becomes stateful (holding an in-memory metric name catalog), adding lifecycle concerns
+- Must handle backpressure correctly — if Signal Studio is slow or unavailable, the Collector's sending queue for the tap exporter must not impact production pipelines
 - OTTL expression evaluation (even partial) is a complex parsing problem that may produce incorrect predictions for edge cases
 - Windowed sampling may miss low-frequency metric names that don't appear during the observation window

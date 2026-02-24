@@ -1,4 +1,4 @@
-# OTel Signal Lens
+# Signal Studio
 
 A read-only diagnostic tool for OpenTelemetry Collector. Paste your Collector YAML config, connect to a live Prometheus metrics endpoint, and get actionable recommendations to reduce telemetry noise and improve pipeline health.
 
@@ -13,6 +13,12 @@ A read-only diagnostic tool for OpenTelemetry Collector. Paste your Collector YA
 - Per-pipeline throughput (in/out rates) overlaid on pipeline cards
 - Per-card component throughput (receiver accepted rates, exporter sent rates + queue utilization)
 - 4 live rules that detect drop rates, log volume dominance, queue saturation, and receiver-exporter mismatches
+
+**OTLP Sampling Tap** -- Enable with `TAP_ENABLED=true` to discover metric names flowing through your Collector:
+- Lightweight OTLP gRPC + HTTP receiver extracts metric metadata (names, types, attribute keys)
+- Add a fan-out exporter to your Collector config — the UI shows the exact YAML snippet to add
+- Metric catalog with TTL-based expiry, accumulates across the session
+- Filter analysis: predicts which metrics would be kept/dropped by `filter` processors (legacy + OTTL syntax)
 
 **Recommendations** -- All findings (static + live) appear in a unified panel sorted by severity, with evidence, explanations, impact estimates, and remediation snippets.
 
@@ -53,8 +59,8 @@ A read-only diagnostic tool for OpenTelemetry Collector. Paste your Collector YA
 ### Docker
 
 ```sh
-docker build -t otel-signal-lens .
-docker run -p 8080:8080 otel-signal-lens
+docker build -t signal-studio .
+docker run -p 8080:8080 signal-studio
 ```
 
 Open http://localhost:8080.
@@ -90,6 +96,9 @@ Environment variables for the backend:
 | `SCRAPE_INTERVAL_SECONDS` | `10` | Metrics polling interval (5-30) |
 | `MAX_YAML_SIZE_KB` | `256` | Maximum YAML body size |
 | `CORS_ORIGINS` | `*` | Allowed CORS origins (comma-separated) |
+| `TAP_ENABLED` | `false` | Enable the OTLP sampling tap on startup |
+| `TAP_GRPC_ADDR` | `:4317` | gRPC listen address for the OTLP tap |
+| `TAP_HTTP_ADDR` | `:4318` | HTTP listen address for the OTLP tap |
 
 ## API
 
@@ -100,19 +109,25 @@ Environment variables for the backend:
 | `POST` | `/api/metrics/disconnect` | Stop scraping |
 | `GET` | `/api/metrics/snapshot` | Latest computed rates and queue data |
 | `GET` | `/api/metrics/status` | Connection status |
+| `POST` | `/api/tap/start` | Start OTLP sampling tap |
+| `POST` | `/api/tap/stop` | Stop tap |
+| `GET` | `/api/tap/status` | Tap status + window timing |
+| `GET` | `/api/tap/catalog` | Discovered metric names |
 | `GET` | `/api/health` | Health check |
 
 ## Project Structure
 
 ```
-otel-signal-lens/
+signal-studio/
 ├── backend/
 │   ├── cmd/server/          # HTTP server entrypoint
 │   └── internal/
 │       ├── api/             # HTTP handlers + routing
 │       ├── config/          # YAML parser + data model
+│       ├── filter/          # Filter config parser + matcher
 │       ├── metrics/         # Prometheus scraper + store
-│       └── rules/           # Static and live rule engine
+│       ├── rules/           # Static and live rule engine
+│       └── tap/             # OTLP sampling tap + metric catalog
 ├── frontend/
 │   └── src/
 │       ├── components/      # React components

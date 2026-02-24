@@ -51,7 +51,7 @@ Rather than importing the full `go.opentelemetry.io/collector` config packages, 
 ### 2.4 Project Structure
 
 ```
-otel-signal-lens/
+signal-studio/
 ├── backend/
 │   ├── cmd/server/         # HTTP server entrypoint
 │   └── internal/
