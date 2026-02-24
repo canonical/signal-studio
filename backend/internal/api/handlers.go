@@ -7,11 +7,11 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/simskij/signal-studio/internal/config"
-	"github.com/simskij/signal-studio/internal/filter"
-	"github.com/simskij/signal-studio/internal/metrics"
-	"github.com/simskij/signal-studio/internal/rules"
-	"github.com/simskij/signal-studio/internal/tap"
+	"github.com/canonical/signal-studio/internal/config"
+	"github.com/canonical/signal-studio/internal/filter"
+	"github.com/canonical/signal-studio/internal/metrics"
+	"github.com/canonical/signal-studio/internal/rules"
+	"github.com/canonical/signal-studio/internal/tap"
 )
 
 type analyzeResponse struct {

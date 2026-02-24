@@ -1,6 +1,6 @@
 package rules
 
-import "github.com/simskij/signal-studio/internal/config"
+import "github.com/canonical/signal-studio/internal/config"
 
 // Severity indicates the importance of a finding.
 type Severity string

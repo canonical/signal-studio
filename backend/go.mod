@@ -1,4 +1,4 @@
-module github.com/simskij/signal-studio
+module github.com/canonical/signal-studio
 
 go 1.25.0
 

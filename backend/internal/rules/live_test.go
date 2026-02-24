@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/simskij/signal-studio/internal/config"
-	"github.com/simskij/signal-studio/internal/metrics"
+	"github.com/canonical/signal-studio/internal/config"
+	"github.com/canonical/signal-studio/internal/metrics"
 )
 
 func makeSnapshot(t0 time.Time, offsetSec int, samples []metrics.MetricSample) *metrics.Snapshot {

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/simskij/signal-studio/internal/tap"
+	"github.com/canonical/signal-studio/internal/tap"
 )
 
 type tapHandler struct {

@@ -1,7 +1,7 @@
 package filter
 
 import (
-	"github.com/simskij/signal-studio/internal/config"
+	"github.com/canonical/signal-studio/internal/config"
 )
 
 // Action represents what happens to a matching metric.

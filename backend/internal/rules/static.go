@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/simskij/signal-studio/internal/config"
+	"github.com/canonical/signal-studio/internal/config"
 )
 
 // Rule 1: Missing memory_limiter processor
