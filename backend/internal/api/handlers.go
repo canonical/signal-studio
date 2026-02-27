@@ -11,6 +11,7 @@ import (
 	"github.com/canonical/signal-studio/internal/filter"
 	"github.com/canonical/signal-studio/internal/metrics"
 	"github.com/canonical/signal-studio/internal/rules"
+	"github.com/canonical/signal-studio/internal/rules/engine"
 	"github.com/canonical/signal-studio/internal/tap"
 )
 
@@ -18,6 +19,14 @@ type analyzeResponse struct {
 	Config         *config.CollectorConfig `json:"config"`
 	Findings       []rules.Finding         `json:"findings"`
 	FilterAnalyses []filter.FilterAnalysis  `json:"filterAnalyses,omitempty"`
+	Summary        *analyzeResponseSummary `json:"summary,omitempty"`
+}
+
+type analyzeResponseSummary struct {
+	Total    int `json:"total"`
+	Critical int `json:"critical"`
+	Warning  int `json:"warning"`
+	Info     int `json:"info"`
 }
 
 type errorResponse struct {
@@ -49,33 +58,46 @@ func (h *analyzeHandler) handleAnalyzeConfig(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	engine := rules.NewDefaultEngine()
+	eng := engine.NewDefaultEngine()
 
 	// Use live rules when metrics are connected
 	var findings []rules.Finding
 	status, _ := h.mgr.Status()
 	if status == metrics.StatusConnected {
-		findings = engine.EvaluateWithMetrics(cfg, h.mgr.Store())
+		findings = eng.EvaluateWithMetrics(cfg, h.mgr.Store())
 	} else {
-		findings = engine.Evaluate(cfg)
+		findings = eng.Evaluate(cfg)
 	}
 
 	// Compute filter analyses first so they're available for catalog rules
 	var filterAnalyses []filter.FilterAnalysis
-	if h.tapMgr != nil && h.tapMgr.Catalog().Len() > 0 {
+	metricCatalogHasData := h.tapMgr != nil && h.tapMgr.Catalog().Len() > 0
+	spanCatalogHasData := h.tapMgr != nil && h.tapMgr.SpanCatalog().Len() > 0
+	if metricCatalogHasData || spanCatalogHasData {
 		fcs := filter.ExtractFilterConfigs(cfg)
-		metricNames := h.tapMgr.Catalog().Names()
 		for _, fc := range fcs {
 			if len(fc.Rules) == 0 {
 				continue
 			}
-			filterAnalyses = append(filterAnalyses, filter.AnalyzeFilter(fc, metricNames))
+			pipelineSignal := pipelineSignalType(cfg, fc.Pipeline)
+			if pipelineSignal == config.SignalTraces && spanCatalogHasData {
+				spanEntries := h.tapMgr.SpanCatalog().Entries()
+				spanNames := make([]string, len(spanEntries))
+				for i, e := range spanEntries {
+					spanNames[i] = e.SpanName
+				}
+				filterAnalyses = append(filterAnalyses, filter.AnalyzeFilter(fc, spanNames))
+			} else if metricCatalogHasData {
+				entries := h.tapMgr.Catalog().Entries()
+				metricInfos := convertEntriesToMetricInfos(entries)
+				filterAnalyses = append(filterAnalyses, filter.AnalyzeFilterWithAttributes(fc, metricInfos))
+			}
 		}
 	}
 
 	// Evaluate catalog rules when tap catalog has data
 	if h.tapMgr != nil && h.tapMgr.Catalog().Len() > 0 {
-		catalogFindings := engine.EvaluateWithCatalog(cfg, h.tapMgr.Catalog().Entries(), filterAnalyses)
+		catalogFindings := eng.EvaluateWithCatalog(cfg, h.tapMgr.Catalog().Entries(), filterAnalyses)
 		findings = append(findings, catalogFindings...)
 	}
 
@@ -96,4 +118,35 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+// pipelineSignalType returns the signal type for a named pipeline.
+func pipelineSignalType(cfg *config.CollectorConfig, pipelineName string) config.Signal {
+	if p, ok := cfg.Pipelines[pipelineName]; ok {
+		return p.Signal
+	}
+	return ""
+}
+
+// convertEntriesToMetricInfos converts tap catalog entries to filter-compatible metric infos.
+func convertEntriesToMetricInfos(entries []tap.MetricEntry) []filter.MetricAttributeInfo {
+	infos := make([]filter.MetricAttributeInfo, len(entries))
+	for i, e := range entries {
+		infos[i] = filter.MetricAttributeInfo{
+			Name: e.Name,
+		}
+		if len(e.Attributes) > 0 {
+			attrs := make([]filter.AttrMeta, len(e.Attributes))
+			for j, a := range e.Attributes {
+				attrs[j] = filter.AttrMeta{
+					Key:          a.Key,
+					Level:        string(a.Level),
+					SampleValues: a.SampleValues,
+					Capped:       a.Capped,
+				}
+			}
+			infos[i].Attributes = attrs
+		}
+	}
+	return infos
 }

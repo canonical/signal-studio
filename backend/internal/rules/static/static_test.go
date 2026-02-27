@@ -1,0 +1,492 @@
+package static
+
+import (
+	"testing"
+
+	"github.com/canonical/signal-studio/internal/config"
+	"github.com/canonical/signal-studio/internal/rules"
+)
+
+func mustParse(t *testing.T, yaml string) *config.CollectorConfig {
+	t.Helper()
+	cfg, err := config.Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("failed to parse test config: %v", err)
+	}
+	return cfg
+}
+
+func findByRule(findings []rules.Finding, ruleID string) []rules.Finding {
+	var result []rules.Finding
+	for _, f := range findings {
+		if f.RuleID == ruleID {
+			result = append(result, f)
+		}
+	}
+	return result
+}
+
+// --- Rule 1: MissingMemoryLimiter ---
+
+func TestMissingMemoryLimiter_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  batch:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+	findings := (&MissingMemoryLimiter{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != rules.SeverityCritical {
+		t.Errorf("expected critical severity, got %s", findings[0].Severity)
+	}
+	if findings[0].Confidence != rules.ConfidenceHigh {
+		t.Errorf("expected high confidence, got %s", findings[0].Confidence)
+	}
+}
+
+func TestMissingMemoryLimiter_Passes(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  memory_limiter:
+    check_interval: 1s
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter]
+      exporters: [debug]
+`)
+	findings := (&MissingMemoryLimiter{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d", len(findings))
+	}
+}
+
+// --- Rule 2: MissingBatch ---
+
+func TestMissingBatch_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  memory_limiter:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter]
+      exporters: [debug]
+`)
+	findings := (&MissingBatch{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != rules.SeverityWarning {
+		t.Errorf("expected warning severity, got %s", findings[0].Severity)
+	}
+	if findings[0].Confidence != rules.ConfidenceHigh {
+		t.Errorf("expected high confidence, got %s", findings[0].Confidence)
+	}
+	if findings[0].Scope == "" {
+		t.Error("expected non-empty scope")
+	}
+}
+
+func TestMissingBatch_Passes(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  batch:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+	findings := (&MissingBatch{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d", len(findings))
+	}
+}
+
+// --- Rule 3: NoTraceSampling ---
+
+func TestNoTraceSampling_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  batch:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+	findings := (&NoTraceSampling{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+}
+
+func TestNoTraceSampling_IgnoresNonTraces(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  batch:
+exporters:
+  debug:
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+	findings := (&NoTraceSampling{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for non-traces pipeline, got %d", len(findings))
+	}
+}
+
+func TestNoTraceSampling_PassesWithSampler(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  probabilistic_sampler:
+    sampling_percentage: 20
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [probabilistic_sampler]
+      exporters: [debug]
+`)
+	findings := (&NoTraceSampling{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with sampler, got %d", len(findings))
+	}
+}
+
+// --- Rule 8: UnusedComponents ---
+
+func TestUnusedComponents_FindsUnused(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+  prometheus:
+processors:
+  batch:
+  memory_limiter:
+exporters:
+  debug:
+  otlp/backend:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+	findings := (&UnusedComponents{}).Evaluate(cfg)
+	if len(findings) != 3 {
+		t.Fatalf("expected 3 unused findings (prometheus, memory_limiter, otlp/backend), got %d", len(findings))
+	}
+}
+
+func TestUnusedComponents_AllUsed(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  batch:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+	findings := (&UnusedComponents{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d", len(findings))
+	}
+}
+
+// --- Rule 9: MultipleExportersNoRouting ---
+
+func TestMultipleExporters_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+  otlp/backend:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug, otlp/backend]
+`)
+	findings := (&MultipleExportersNoRouting{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+}
+
+func TestMultipleExporters_PassesWithRoutingConnector(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+connectors:
+  routing:
+    match_once: true
+    default_pipelines: [traces/primary]
+exporters:
+  debug:
+  otlp/backend:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [routing, debug, otlp/backend]
+`)
+	findings := (&MultipleExportersNoRouting{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with routing connector, got %d", len(findings))
+	}
+}
+
+func TestMultipleExporters_FiresWithRoutingProcessor(t *testing.T) {
+	// A routing *processor* (deprecated) should NOT suppress the finding —
+	// only a routing *connector* should.
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  routing:
+exporters:
+  debug:
+  otlp/backend:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [routing]
+      exporters: [debug, otlp/backend]
+`)
+	findings := (&MultipleExportersNoRouting{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding (routing processor is deprecated), got %d", len(findings))
+	}
+}
+
+func TestMultipleExporters_PassesSingleExporter(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&MultipleExportersNoRouting{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for single exporter, got %d", len(findings))
+	}
+}
+
+// --- Rule 10: NoLogSeverityFilter ---
+
+func TestNoLogSeverityFilter_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  batch:
+exporters:
+  debug:
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+	findings := (&NoLogSeverityFilter{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+}
+
+func TestNoLogSeverityFilter_PassesWithFilter(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  filter/severity:
+    error_mode: ignore
+exporters:
+  debug:
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [filter/severity]
+      exporters: [debug]
+`)
+	findings := (&NoLogSeverityFilter{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with filter, got %d", len(findings))
+	}
+}
+
+func TestNoLogSeverityFilter_IgnoresNonLogs(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  batch:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+`)
+	findings := (&NoLogSeverityFilter{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for non-logs pipeline, got %d", len(findings))
+	}
+}
+
+// --- Slashed component names across all rules ---
+
+func TestSlashedProcessorNames(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+processors:
+  memory_limiter/strict:
+    check_interval: 500ms
+    limit_mib: 256
+  batch/fast:
+    timeout: 1s
+  probabilistic_sampler/half:
+    sampling_percentage: 50
+  filter/info:
+    error_mode: ignore
+  routing/env:
+    default_exporters: [otlp/primary]
+exporters:
+  otlp/primary:
+    endpoint: backend:4317
+  otlp/secondary:
+    endpoint: backup:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter/strict, probabilistic_sampler/half, batch/fast]
+      exporters: [otlp/primary, otlp/secondary]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter/strict, filter/info, batch/fast]
+      exporters: [otlp/primary]
+`)
+
+	// Rule 1: memory_limiter/strict should satisfy the memory_limiter check
+	mlFindings := (&MissingMemoryLimiter{}).Evaluate(cfg)
+	if len(mlFindings) != 0 {
+		t.Errorf("MissingMemoryLimiter: expected 0 findings with memory_limiter/strict, got %d", len(mlFindings))
+	}
+
+	// Rule 2: batch/fast should satisfy the batch check
+	batchFindings := (&MissingBatch{}).Evaluate(cfg)
+	if len(batchFindings) != 0 {
+		t.Errorf("MissingBatch: expected 0 findings with batch/fast, got %d", len(batchFindings))
+	}
+
+	// Rule 3: probabilistic_sampler/half should satisfy the sampling check
+	samplingFindings := (&NoTraceSampling{}).Evaluate(cfg)
+	if len(samplingFindings) != 0 {
+		t.Errorf("NoTraceSampling: expected 0 findings with probabilistic_sampler/half, got %d", len(samplingFindings))
+	}
+
+	// Rule 8: all slashed components are used, unused check should find routing/env only
+	unusedFindings := (&UnusedComponents{}).Evaluate(cfg)
+	for _, f := range unusedFindings {
+		if f.Title != "Unused processor: routing/env" {
+			t.Errorf("UnusedComponents: unexpected finding: %s", f.Title)
+		}
+	}
+	if len(unusedFindings) != 1 {
+		t.Errorf("UnusedComponents: expected 1 finding (routing/env), got %d", len(unusedFindings))
+	}
+
+	// Rule 10: filter/info should satisfy the log severity filter check
+	filterFindings := (&NoLogSeverityFilter{}).Evaluate(cfg)
+	if len(filterFindings) != 0 {
+		t.Errorf("NoLogSeverityFilter: expected 0 findings with filter/info, got %d", len(filterFindings))
+	}
+}
+
+func TestMultipleExporters_PassesWithSlashedRoutingConnector(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+connectors:
+  routing/env:
+    match_once: true
+    default_pipelines: [traces/primary]
+exporters:
+  otlp/primary:
+  otlp/secondary:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [routing/env, otlp/primary, otlp/secondary]
+`)
+	// Rule 9: routing/env connector should satisfy the routing check
+	findings := (&MultipleExportersNoRouting{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with routing/env connector, got %d", len(findings))
+	}
+}
+

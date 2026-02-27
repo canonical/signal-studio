@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AnalyzeResponse, Finding } from "./types/api";
+import type { AnalyzeResponse, AlertStatus, CoverageReport, Finding, Severity } from "./types/api";
 import { useDebounce } from "./hooks/useDebounce";
 import { useMetrics } from "./hooks/useMetrics";
 import { useTap } from "./hooks/useTap";
@@ -13,8 +13,61 @@ import {
   type CardFilter,
 } from "./components/PipelineGraph";
 import { TapConnection } from "./components/TapConnection";
+import { Toast } from "./components/Toast";
+
 
 const DEBOUNCE_MS = 500;
+
+const COVERAGE_SEVERITY: Partial<Record<AlertStatus, Severity>> = {
+  broken: "critical",
+  at_risk: "critical",
+  would_activate: "critical",
+  unknown: "info",
+};
+
+const COVERAGE_TITLE: Record<string, (name: string) => string> = {
+  broken: (n) => `Alert '${n}' broken by filter`,
+  at_risk: (n) => `Alert '${n}' at risk from partial filtering`,
+  would_activate: (n) => `Alert '${n}' would falsely activate`,
+  unknown: (n) => `Alert '${n}' coverage unknown`,
+};
+
+const COVERAGE_IMPLICATION: Record<string, string> = {
+  broken: "This alert will never fire because one or more required metrics are being dropped by a filter processor.",
+  at_risk: "Some series of the required metrics are partially filtered, which may cause inconsistent alert behaviour.",
+  would_activate: "This alert uses absent() and the required metric is being dropped, which will cause the alert to fire unexpectedly.",
+  unknown: "Unable to determine whether the metrics required by this alert are being collected.",
+};
+
+const COVERAGE_RECOMMENDATION: Record<string, string> = {
+  broken: "Review the filter processor configuration to ensure metrics required by this alert are preserved.",
+  at_risk: "Check that attribute-level filters do not inadvertently remove series needed for this alert.",
+  would_activate: "Either preserve the metric in the filter or disable the absent()-based alert to avoid false positives.",
+  unknown: "Verify that the required metrics are being scraped and forwarded through the pipeline.",
+};
+
+function coverageToFindings(report: CoverageReport): Finding[] {
+  const out: Finding[] = [];
+  for (const r of report.results) {
+    const severity = COVERAGE_SEVERITY[r.status];
+    if (!severity) continue; // safe → skip
+    const metricsDetail = r.metrics
+      .map((m) => `${m.metricName}: ${m.filterOutcome}`)
+      .join(", ");
+    out.push({
+      ruleId: "alert-coverage",
+      title: (COVERAGE_TITLE[r.status] ?? ((n: string) => n))(r.alertName),
+      severity,
+      confidence: r.status === "unknown" ? "low" : "high",
+      evidence: `Metrics: ${metricsDetail}`,
+      implication: COVERAGE_IMPLICATION[r.status] ?? "",
+      recommendation: COVERAGE_RECOMMENDATION[r.status] ?? "",
+      snippet: r.expr,
+      scope: `alert-group:${r.alertGroup}`,
+    });
+  }
+  return out;
+}
 
 export default function App() {
   const [yaml, setYaml] = useState(
@@ -26,6 +79,14 @@ export default function App() {
   const [liveMode, setLiveMode] = useState(true);
   const [cardFilter, setCardFilter] = useState<CardFilter | null>(null);
   const [asideOpen, setAsideOpen] = useState(true);
+
+  // Alert coverage state
+  const [alertRulesText, setAlertRulesText] = useState(
+    () => localStorage.getItem("signal-studio:alert-rules") || "",
+  );
+  const [alertCoverage, setAlertCoverage] = useState<CoverageReport | null>(null);
+  const [alertError, setAlertError] = useState<string | null>(null);
+
   const metrics = useMetrics();
   const tap = useTap();
 
@@ -33,9 +94,39 @@ export default function App() {
     localStorage.setItem("signal-studio:yaml", yaml);
   }, [yaml]);
 
+  useEffect(() => {
+    localStorage.setItem("signal-studio:alert-rules", alertRulesText);
+  }, [alertRulesText]);
+
   const debouncedYaml = useDebounce(yaml, DEBOUNCE_MS);
+  const debouncedAlertRules = useDebounce(alertRulesText, DEBOUNCE_MS);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Ref for alert rules text so analyze() can access current value without deps
+  const alertRulesTextRef = useRef(alertRulesText);
+  alertRulesTextRef.current = alertRulesText;
+
+  // Helper: build alert coverage request body
+  function buildAlertBody(configYaml: string, rulesYaml: string): Record<string, string> | null {
+    if (!rulesYaml.trim()) return null;
+    return { configYaml, rules: rulesYaml };
+  }
+
+  // Helper: run alert coverage analysis
+  async function fetchAlertCoverage(body: Record<string, string>): Promise<CoverageReport> {
+    const res = await fetch("/api/alert-coverage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  // Config analysis
   const analyze = useCallback(async (config: string) => {
     if (!config.trim()) return;
 
@@ -64,33 +155,71 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+
+    // Also run alert coverage if rules are configured
+    const alertBody = buildAlertBody(config, alertRulesTextRef.current);
+    if (alertBody) {
+      fetchAlertCoverage(alertBody)
+        .then((data) => { setAlertCoverage(data); setAlertError(null); })
+        .catch(() => {});
+    }
   }, []);
 
+  // Live mode: config analysis
   useEffect(() => {
     if (liveMode) {
       analyze(debouncedYaml);
     }
   }, [debouncedYaml, liveMode, analyze]);
 
-  const findings = result?.findings ?? [];
+  // Live mode: alert coverage re-analysis when alert rules change
+  useEffect(() => {
+    if (!liveMode || !debouncedYaml.trim()) return;
+    const body = buildAlertBody(debouncedYaml, debouncedAlertRules);
+    if (!body) return;
+
+    fetchAlertCoverage(body)
+      .then((data) => { setAlertCoverage(data); setAlertError(null); })
+      .catch(() => {});
+  }, [debouncedAlertRules, liveMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const analysisFindings = result?.findings ?? [];
+  const coverageFindings = alertCoverage ? coverageToFindings(alertCoverage) : [];
+  const findings = [...analysisFindings, ...coverageFindings];
 
   const filteredFindings: Finding[] = cardFilter
     ? findings.filter((f) => {
         const ruleSet = rulesForRole(cardFilter.role);
         return (
           ruleSet.includes(f.ruleId) &&
-          (f.pipeline === cardFilter.pipeline || !f.pipeline)
+          (f.scope === `pipeline:${cardFilter.pipeline}` || !f.scope)
         );
       })
     : findings;
 
   return (
     <div className="l-application">
+      {metrics.error && (
+        <Toast
+          message={metrics.error}
+          onDismiss={metrics.clearError}
+        />
+      )}
+      {alertError && (
+        <Toast
+          message={alertError}
+          onDismiss={() => setAlertError(null)}
+        />
+      )}
       <nav className="l-navigation is-dark">
         <div className="l-navigation__drawer">
           <ConfigInput
             yaml={yaml}
             onYamlChange={setYaml}
+            alertRulesText={alertRulesText}
+            onAlertRulesTextChange={setAlertRulesText}
+            alertCoverage={alertCoverage}
+            alertApiConnected={false}
             onAnalyze={() => analyze(yaml)}
             liveMode={liveMode}
             onLiveModeChange={setLiveMode}
@@ -108,18 +237,21 @@ export default function App() {
                 <div className="p-panel__controls">
                   <TapConnection
                     status={tap.status}
-                    entryCount={tap.entries.length}
+                    entryCount={tap.entries.length + tap.spanEntries.length + tap.logEntries.length}
                     error={tap.error}
                     grpcAddr={tap.grpcAddr}
                     httpAddr={tap.httpAddr}
                     rateChanged={tap.rateChanged}
                     onReset={tap.resetCatalog}
+                    onStart={tap.start}
+                    onStop={tap.stop}
                   />
                   <MetricsConnection
                     status={metrics.status}
-                    error={metrics.error}
+                    hasData={!!metrics.snapshot}
                     onConnect={metrics.connect}
                     onDisconnect={metrics.disconnect}
+                    onReset={metrics.resetStore}
                   />
                 </div>
               </div>
@@ -140,6 +272,7 @@ export default function App() {
                     metricsSnapshot={metrics.snapshot}
                     filterAnalyses={result.filterAnalyses}
                     catalogEntries={tap.entries}
+                    spanEntries={tap.spanEntries}
                   />
                 ) : (
                   <p
@@ -150,12 +283,13 @@ export default function App() {
                   </p>
                 )}
               </div>
-              {result && (
-                <MetricCatalogPanel
-                  entries={tap.entries}
-                  filterAnalyses={result.filterAnalyses}
-                />
-              )}
+              <MetricCatalogPanel
+                entries={tap.entries}
+                spanEntries={tap.spanEntries}
+                logEntries={tap.logEntries}
+                filterAnalyses={result?.filterAnalyses}
+                tapStatus={tap.status}
+              />
             </div>
           </div>
 
@@ -190,15 +324,6 @@ export default function App() {
                   </h4>
                 </div>
                 <div className="p-panel__content">
-                  {cardFilter && (
-                    <button
-                      className="p-button--base is-small u-no-margin--bottom"
-                      style={{ marginBottom: "0.5rem" }}
-                      onClick={() => setCardFilter(null)}
-                    >
-                      Remove filter
-                    </button>
-                  )}
                   {result ? (
                     <FindingsPanel findings={filteredFindings} />
                   ) : (

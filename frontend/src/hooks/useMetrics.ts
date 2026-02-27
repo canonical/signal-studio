@@ -7,8 +7,10 @@ interface UseMetricsResult {
   status: MetricsStatus;
   snapshot: MetricsSnapshot | null;
   error: string | null;
+  clearError: () => void;
   connect: (url: string, token?: string) => Promise<void>;
   disconnect: () => Promise<void>;
+  resetStore: () => Promise<void>;
 }
 
 const LS_CONNECTED = "signal-studio:metrics-connected";
@@ -80,6 +82,16 @@ export function useMetrics(): UseMetricsResult {
     localStorage.removeItem(LS_CONNECTED);
   }, [stopPolling]);
 
+  const resetStore = useCallback(async () => {
+    try {
+      await fetch("/api/metrics/reset", { method: "POST" });
+    } catch {
+      // Ignore reset errors
+    }
+    setSnapshot(null);
+    fetchSnapshot();
+  }, [fetchSnapshot]);
+
   // Restore connection on mount if previously connected
   useEffect(() => {
     if (localStorage.getItem(LS_CONNECTED) !== "1") return;
@@ -110,5 +122,7 @@ export function useMetrics(): UseMetricsResult {
   // Cleanup on unmount
   useEffect(() => stopPolling, [stopPolling]);
 
-  return { status, snapshot, error, connect, disconnect };
+  const clearError = useCallback(() => setError(null), []);
+
+  return { status, snapshot, error, clearError, connect, disconnect, resetStore };
 }

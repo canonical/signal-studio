@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  LogEntry,
   MetricEntry,
+  SpanEntry,
   TapCatalogResponse,
   TapStatus,
   TapStatusResponse,
@@ -12,16 +14,22 @@ const CATALOG_POLL_MS = 5_000;
 interface UseTapResult {
   status: TapStatus;
   entries: MetricEntry[];
+  spanEntries: SpanEntry[];
+  logEntries: LogEntry[];
   error: string | null;
   grpcAddr: string | null;
   httpAddr: string | null;
   rateChanged: boolean;
   resetCatalog: () => Promise<void>;
+  start: () => Promise<void>;
+  stop: () => Promise<void>;
 }
 
 export function useTap(): UseTapResult {
   const [status, setStatus] = useState<TapStatus>("idle");
   const [entries, setEntries] = useState<MetricEntry[]>([]);
+  const [spanEntries, setSpanEntries] = useState<SpanEntry[]>([]);
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [grpcAddr, setGrpcAddr] = useState<string | null>(null);
   const [httpAddr, setHttpAddr] = useState<string | null>(null);
@@ -49,7 +57,9 @@ export function useTap(): UseTapResult {
       const res = await fetch("/api/tap/catalog");
       if (!res.ok) return;
       const data: TapCatalogResponse = await res.json();
-      setEntries(data.entries ?? []);
+      setEntries(data.metrics ?? []);
+      setSpanEntries(data.spans ?? []);
+      setLogEntries(data.logs ?? []);
       setRateChanged(data.rateChanged ?? false);
     } catch {
       // silently ignore
@@ -76,11 +86,38 @@ export function useTap(): UseTapResult {
       await fetch("/api/tap/reset", { method: "POST" });
       setRateChanged(false);
       setEntries([]);
+      setSpanEntries([]);
+      setLogEntries([]);
       fetchCatalog();
     } catch {
       // silently ignore
     }
   }, [fetchCatalog]);
 
-  return { status, entries, error, grpcAddr, httpAddr, rateChanged, resetCatalog };
+  const start = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tap/start", { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Failed to start tap");
+      }
+      await fetchStatus();
+    } catch {
+      setError("Failed to start tap");
+    }
+  }, [fetchStatus]);
+
+  const stop = useCallback(async () => {
+    try {
+      await fetch("/api/tap/stop", { method: "POST" });
+      setEntries([]);
+      setSpanEntries([]);
+      setLogEntries([]);
+      await fetchStatus();
+    } catch {
+      // silently ignore
+    }
+  }, [fetchStatus]);
+
+  return { status, entries, spanEntries, logEntries, error, grpcAddr, httpAddr, rateChanged, resetCatalog, start, stop };
 }

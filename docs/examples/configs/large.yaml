@@ -22,8 +22,8 @@ receivers:
 exporters:
   debug:
     verbosity: detailed
-  otlp:
-    endpoint: localhost:4317
+  otlp/signal-studio:
+    endpoint: localhost:5317
     retry_on_failure:
       enabled: true
       max_elapsed_time: 300s

@@ -142,6 +142,41 @@ func TestManagerScrapeLoopHandlesError(t *testing.T) {
 	mgr.Disconnect()
 }
 
+func TestResetStore(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(samplePrometheusOutput))
+	}))
+	defer srv.Close()
+
+	mgr := NewManager(1 * time.Second)
+
+	err := mgr.Connect(ScrapeConfig{URL: srv.URL})
+	if err != nil {
+		t.Fatalf("connect error: %v", err)
+	}
+
+	// Verify we have data after connect
+	if mgr.Store().Len() == 0 {
+		t.Fatal("expected store to have data after connect")
+	}
+
+	// Reset the store
+	mgr.ResetStore()
+
+	// Store should be empty
+	if mgr.Store().Len() != 0 {
+		t.Errorf("store len = %d after ResetStore, want 0", mgr.Store().Len())
+	}
+
+	// Connection status should still be connected
+	status, _ := mgr.Status()
+	if status != StatusConnected {
+		t.Errorf("status = %q after ResetStore, want connected", status)
+	}
+
+	mgr.Disconnect()
+}
+
 func TestManagerSnapshotDisconnected(t *testing.T) {
 	mgr := NewManager(10 * time.Second)
 	snap := mgr.Snapshot()

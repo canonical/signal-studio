@@ -291,3 +291,22 @@ func TestComponentType(t *testing.T) {
 		}
 	}
 }
+
+func TestComponentQualifier(t *testing.T) {
+	tests := []struct {
+		name string
+		want string
+	}{
+		{"otlp", ""},
+		{"otlp/grpc", "grpc"},
+		{"otlp/signal-studio", "signal-studio"},
+		{"filter/info", "info"},
+		{"debug", ""},
+	}
+	for _, tt := range tests {
+		got := ComponentQualifier(tt.name)
+		if got != tt.want {
+			t.Errorf("ComponentQualifier(%q) = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}

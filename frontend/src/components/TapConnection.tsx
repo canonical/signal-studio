@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { TapStatus } from "../types/api";
+import { BrushCleaning } from "lucide-react";
 
 interface TapConnectionProps {
   status: TapStatus;
@@ -9,6 +10,8 @@ interface TapConnectionProps {
   httpAddr: string | null;
   rateChanged: boolean;
   onReset: () => void;
+  onStart: () => void;
+  onStop: () => void;
 }
 
 function RadioTowerIcon() {
@@ -34,35 +37,92 @@ function RadioTowerIcon() {
   );
 }
 
-function CheckBadge() {
+function ToggleIcon({ active }: { active: boolean }) {
+  if (active) {
+    // toggle-right: green
+    return (
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#22c55e"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="1" y="5" width="22" height="14" rx="7" ry="7" />
+        <circle cx="16" cy="12" r="3" fill="#22c55e" />
+      </svg>
+    );
+  }
+  // toggle-left: black
   return (
-    <svg className="tap-icon__badge" width="10" height="10" viewBox="0 0 10 10">
-      <circle cx="5" cy="5" r="5" fill="#22c55e" />
-      <path d="M3 5.2l1.5 1.5 3-3" stroke="#fff" strokeWidth="1.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="1" y="5" width="22" height="14" rx="7" ry="7" />
+      <circle cx="8" cy="12" r="3" />
     </svg>
   );
 }
 
-function WaitingBadge() {
+function ListeningBadge() {
   return (
-    <svg className="tap-icon__badge tap-icon__badge--waiting" width="10" height="10" viewBox="0 0 10 10">
-      <circle cx="5" cy="5" r="5" fill="#666" />
-      <circle cx="5" cy="5" r="2.5" fill="none" stroke="#fff" strokeWidth="1" strokeDasharray="4 2" />
+    <svg className="tap-icon__badge" width="12" height="12" viewBox="0 0 12 12">
+      <circle cx="6" cy="6" r="6" fill="#22c55e" />
+      <path
+        d="M3.5 5.5C3.5 3.8 4.8 2.5 6 2.5s2.5 1.3 2.5 3"
+        stroke="#fff"
+        strokeWidth="1"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <path
+        d="M5 5.5C5 4.7 5.4 4 6 4s1 .7 1 1.5"
+        stroke="#fff"
+        strokeWidth="1"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <circle cx="6" cy="6.5" r="0.7" fill="#fff" />
+      <path d="M6 7.2v1.8" stroke="#fff" strokeWidth="1" strokeLinecap="round" />
     </svg>
   );
 }
 
 function WarningBadge() {
   return (
-    <svg className="tap-icon__warning-badge" width="10" height="10" viewBox="0 0 10 10">
+    <svg
+      className="tap-icon__warning-badge"
+      width="10"
+      height="10"
+      viewBox="0 0 10 10"
+    >
       <circle cx="5" cy="5" r="5" fill="#f59e0b" />
-      <text x="5" y="7.5" textAnchor="middle" fill="#fff" fontSize="8" fontWeight="bold">!</text>
+      <text
+        x="5"
+        y="7.5"
+        textAnchor="middle"
+        fill="#fff"
+        fontSize="8"
+        fontWeight="bold"
+      >
+        !
+      </text>
     </svg>
   );
 }
 
 function collectorSnippet(grpcAddr: string): string {
-  // Extract host:port. If it's ":4317" (just port), use localhost.
+  // Extract host:port. If it's ":5317" (just port), use localhost.
   const endpoint = grpcAddr.startsWith(":") ? `localhost${grpcAddr}` : grpcAddr;
 
   return `exporters:
@@ -74,8 +134,10 @@ function collectorSnippet(grpcAddr: string): string {
 service:
   pipelines:
     metrics:
-      # Add otlp/signal-studio alongside
-      # your existing exporters
+      exporters: [..., otlp/signal-studio]
+    traces:
+      exporters: [..., otlp/signal-studio]
+    logs:
       exporters: [..., otlp/signal-studio]`;
 }
 
@@ -87,6 +149,8 @@ export function TapConnection({
   httpAddr,
   rateChanged,
   onReset,
+  onStart,
+  onStop,
 }: TapConnectionProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -96,6 +160,7 @@ export function TapConnection({
   const isListening = status === "listening";
   const isError = status === "error";
   const isIdle = status === "idle";
+  const isDisabled = status === "disabled";
 
   useEffect(() => {
     if (!open) return;
@@ -121,9 +186,10 @@ export function TapConnection({
   }
 
   let tooltip = "OTLP sampling tap";
-  if (isListening) tooltip = `Tap listening — ${entryCount} metrics discovered`;
+  if (isListening) tooltip = `Tap listening — ${entryCount} signals discovered`;
   else if (isError) tooltip = "Tap error";
-  else if (isIdle) tooltip = "Tap not enabled — click for setup instructions";
+  else if (isDisabled) tooltip = "Tap disabled by server configuration";
+  else if (isIdle) tooltip = "Tap idle — click to start";
 
   return (
     <div className="tap-icon-wrapper">
@@ -134,29 +200,57 @@ export function TapConnection({
         title={tooltip}
       >
         <RadioTowerIcon />
-        {isListening && entryCount === 0 && <WaitingBadge />}
-        {isListening && entryCount > 0 && !rateChanged && <CheckBadge />}
-        {isListening && entryCount > 0 && rateChanged && <WarningBadge />}
+        {isListening && !rateChanged && <ListeningBadge />}
+        {isListening && rateChanged && <WarningBadge />}
         {isError && <span className="tap-icon__error-dot" />}
       </button>
 
       {open && (
         <div ref={popoutRef} className="tap-popout">
           <div className="tap-popout__status">
-            <span
-              className={`tap-popout__dot tap-popout__dot--${isListening ? "listening" : isError ? "error" : "idle"}`}
-            />
-            {isListening
-              ? "Listening for OTLP metrics"
-              : isError
-                ? "Tap error"
-                : "Tap not enabled"}
+            {isDisabled ? (
+              <>
+                <span className="tap-popout__dot tap-popout__dot--disabled" />
+                Tap disabled
+              </>
+            ) : (
+              <>
+                <button
+                  className="tap-popout__toggle-btn"
+                  onClick={isListening ? onStop : onStart}
+                  type="button"
+                  title={isListening ? "Stop tap" : "Start tap"}
+                >
+                  <ToggleIcon active={isListening} />
+                </button>
+                {isListening
+                  ? "Listening for OTLP signals"
+                  : isError
+                    ? "Tap error"
+                    : "Tap idle"}
+                <button
+                  className="tap-popout__reset-btn"
+                  onClick={onReset}
+                  type="button"
+                  disabled={entryCount === 0}
+                  title="Reset catalog"
+                >
+                  <BrushCleaning size={18} strokeWidth={1.5} />
+                </button>
+              </>
+            )}
           </div>
 
           {isListening && (
             <div className="tap-popout__addrs">
-              <span>gRPC: {grpcAddr}</span>
-              <span>HTTP: {httpAddr}</span>
+              <span className="pipeline-card__filter-stat pipeline-card__filter-stat--neutral">
+                <span className="pipeline-card__detail-proto">gRPC</span>
+                {grpcAddr}
+              </span>
+              <span className="pipeline-card__filter-stat pipeline-card__filter-stat--neutral">
+                <span className="pipeline-card__detail-proto">HTTP</span>
+                {httpAddr}
+              </span>
             </div>
           )}
 
@@ -167,26 +261,27 @@ export function TapConnection({
                 likely means the scrape or collection interval was modified.
                 Accumulated point counts may be inaccurate.
               </p>
-              <button
-                className="tap-popout__reset-btn"
-                onClick={onReset}
-                type="button"
-              >
-                Reset catalog
-              </button>
             </div>
           )}
 
           {error && <p className="tap-popout__error">{error}</p>}
 
-          {isIdle && (
+
+
+          {isDisabled && (
             <p className="tap-popout__hint">
-              Start the backend with <code>TAP_ENABLED=true</code> to enable the
-              OTLP sampling tap.
+              The OTLP sampling tap has been disabled by the server
+              configuration (<code>TAP_DISABLED=true</code>).
             </p>
           )}
 
-          {isListening && grpcAddr && (
+          {isIdle && (
+            <p className="tap-popout__hint">
+              Toggle the tap to start discovering metrics from your Collector.
+            </p>
+          )}
+
+          {isListening && grpcAddr && entryCount === 0 && (
             <>
               <p className="tap-popout__hint">
                 Add a fan-out exporter to your Collector config. To see which
@@ -211,12 +306,6 @@ export function TapConnection({
                 </pre>
               </div>
             </>
-          )}
-
-          {entryCount > 0 && (
-            <p className="tap-popout__count">
-              {entryCount} metric{entryCount !== 1 ? "s" : ""} discovered
-            </p>
           )}
         </div>
       )}

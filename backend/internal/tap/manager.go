@@ -13,6 +13,7 @@ const (
 	TapStatusIdle      TapStatus = "idle"
 	TapStatusListening TapStatus = "listening"
 	TapStatusError     TapStatus = "error"
+	TapStatusDisabled  TapStatus = "disabled"
 )
 
 const defaultTTL = 5 * time.Minute
@@ -25,27 +26,42 @@ type TapConfig struct {
 
 // Manager coordinates the tap lifecycle.
 type Manager struct {
-	mu        sync.RWMutex
-	status    TapStatus
-	lastErr   string
-	catalog   *Catalog
-	receiver  *Receiver
-	stopCh    chan struct{}
-	startedAt time.Time
-	grpcAddr  string
-	httpAddr  string
+	mu          sync.RWMutex
+	disabled    bool
+	status      TapStatus
+	lastErr     string
+	catalog     *Catalog
+	spanCatalog *SpanCatalog
+	logCatalog  *LogCatalog
+	receiver    *Receiver
+	stopCh      chan struct{}
+	startedAt   time.Time
+	grpcAddr    string
+	httpAddr    string
 }
 
-// NewManager creates a new tap Manager in idle state.
-func NewManager() *Manager {
+// NewManager creates a new tap Manager.
+// If disabled is true the manager rejects Start calls and reports "disabled" status.
+func NewManager(disabled bool) *Manager {
+	status := TapStatusIdle
+	if disabled {
+		status = TapStatusDisabled
+	}
 	return &Manager{
-		status:  TapStatusIdle,
-		catalog: NewCatalog(defaultTTL),
+		disabled:    disabled,
+		status:      status,
+		catalog:     NewCatalog(defaultTTL),
+		spanCatalog: NewSpanCatalog(defaultTTL),
+		logCatalog:  NewLogCatalog(defaultTTL),
 	}
 }
 
 // Start begins a tap session. If already listening, the existing session is replaced.
+// Returns an error when the manager was created in disabled mode.
 func (m *Manager) Start(cfg TapConfig) error {
+	if m.disabled {
+		return fmt.Errorf("tap is disabled")
+	}
 	m.mu.Lock()
 	if m.stopCh != nil {
 		close(m.stopCh)
@@ -61,7 +77,7 @@ func (m *Manager) Start(cfg TapConfig) error {
 		GRPCAddr: cfg.GRPCAddr,
 		HTTPAddr: cfg.HTTPAddr,
 	}
-	recv, err := NewReceiver(rcvCfg, m.catalog)
+	recv, err := NewReceiver(rcvCfg, m.catalog, m.spanCatalog, m.logCatalog)
 	if err != nil {
 		m.mu.Lock()
 		m.status = TapStatusError
@@ -125,6 +141,16 @@ func (m *Manager) Catalog() *Catalog {
 	return m.catalog
 }
 
+// SpanCatalog returns the span catalog.
+func (m *Manager) SpanCatalog() *SpanCatalog {
+	return m.spanCatalog
+}
+
+// LogCatalog returns the log catalog.
+func (m *Manager) LogCatalog() *LogCatalog {
+	return m.logCatalog
+}
+
 // pruneLoop periodically removes expired catalog entries.
 func (m *Manager) pruneLoop(stopCh chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second)
@@ -136,6 +162,8 @@ func (m *Manager) pruneLoop(stopCh chan struct{}) {
 			return
 		case <-ticker.C:
 			m.catalog.Prune()
+			m.spanCatalog.Prune()
+			m.logCatalog.Prune()
 		}
 	}
 }

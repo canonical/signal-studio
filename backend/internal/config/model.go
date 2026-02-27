@@ -45,3 +45,15 @@ func ComponentType(name string) string {
 	}
 	return name
 }
+
+// ComponentQualifier extracts the instance qualifier from a component name.
+// For example, "otlp/signal-studio" returns "signal-studio".
+// Returns "" if no qualifier is present.
+func ComponentQualifier(name string) string {
+	for i, c := range name {
+		if c == '/' {
+			return name[i+1:]
+		}
+	}
+	return ""
+}

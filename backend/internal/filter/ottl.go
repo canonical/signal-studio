@@ -96,13 +96,20 @@ func parseIsMatch(expr string) (FilterRule, bool) {
 	}, true
 }
 
-// unquote removes surrounding double or single quotes from s.
+// unquote removes surrounding double or single quotes from s and processes
+// the OTTL \\\\ → \\ escape (doubled backslash becomes single backslash).
+// Other backslash sequences (e.g. \\. for a regex literal dot) pass through as-is.
 func unquote(s string) (string, bool) {
 	if len(s) < 2 {
 		return "", false
 	}
 	if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
-		return s[1 : len(s)-1], true
+		inner := s[1 : len(s)-1]
+		// Only process doubled backslash → single backslash.
+		if strings.Contains(inner, `\\`) {
+			return strings.ReplaceAll(inner, `\\`, `\`), true
+		}
+		return inner, true
 	}
 	return "", false
 }

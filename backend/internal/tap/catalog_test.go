@@ -1,6 +1,7 @@
 package tap
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -284,6 +285,244 @@ func TestCatalog_ClearResetsRateTracking(t *testing.T) {
 
 	if c.RateChanged() {
 		t.Error("expected RateChanged=false after Clear()")
+	}
+}
+
+func TestCatalog_RecordAttributes_Basic(t *testing.T) {
+	c := NewCatalog(5 * time.Minute)
+	c.Record("my.metric", MetricTypeGauge, nil, 1)
+
+	c.RecordAttributes("my.metric", AttributeLevelResource, []AttributeKV{
+		{Key: "service.name", Value: "frontend"},
+		{Key: "deployment.environment", Value: "prod"},
+	})
+
+	entries := c.Entries()
+	if len(entries[0].Attributes) != 2 {
+		t.Fatalf("expected 2 attributes, got %d", len(entries[0].Attributes))
+	}
+	// Sorted by level then key
+	a0 := entries[0].Attributes[0]
+	if a0.Key != "deployment.environment" || a0.Level != AttributeLevelResource {
+		t.Errorf("unexpected first attr: %+v", a0)
+	}
+	if len(a0.SampleValues) != 1 || a0.SampleValues[0] != "prod" {
+		t.Errorf("unexpected sample values: %v", a0.SampleValues)
+	}
+	if a0.UniqueCount != 1 {
+		t.Errorf("expected unique count 1, got %d", a0.UniqueCount)
+	}
+}
+
+func TestCatalog_RecordAttributes_CappingAt25(t *testing.T) {
+	c := NewCatalog(5 * time.Minute)
+	c.Record("my.metric", MetricTypeGauge, nil, 1)
+
+	for i := 0; i < 30; i++ {
+		c.RecordAttributes("my.metric", AttributeLevelDatapoint, []AttributeKV{
+			{Key: "id", Value: fmt.Sprintf("val-%d", i)},
+		})
+	}
+
+	entries := c.Entries()
+	attr := entries[0].Attributes[0]
+	if len(attr.SampleValues) != MaxSampleValues {
+		t.Errorf("expected %d samples, got %d", MaxSampleValues, len(attr.SampleValues))
+	}
+	if !attr.Capped {
+		t.Error("expected capped to be true")
+	}
+	// UniqueCount freezes at MaxSampleValues once capped (we can't track further).
+	if attr.UniqueCount != MaxSampleValues {
+		t.Errorf("expected unique count %d, got %d", MaxSampleValues, attr.UniqueCount)
+	}
+}
+
+func TestCatalog_RecordAttributes_MultipleLevels(t *testing.T) {
+	c := NewCatalog(5 * time.Minute)
+	c.Record("my.metric", MetricTypeGauge, nil, 1)
+
+	c.RecordAttributes("my.metric", AttributeLevelResource, []AttributeKV{
+		{Key: "service.name", Value: "api"},
+	})
+	c.RecordAttributes("my.metric", AttributeLevelScope, []AttributeKV{
+		{Key: "otel.scope.name", Value: "mylib"},
+	})
+	c.RecordAttributes("my.metric", AttributeLevelDatapoint, []AttributeKV{
+		{Key: "method", Value: "GET"},
+	})
+
+	entries := c.Entries()
+	if len(entries[0].Attributes) != 3 {
+		t.Fatalf("expected 3 attributes, got %d", len(entries[0].Attributes))
+	}
+	// Should be sorted: resource, scope, datapoint
+	if entries[0].Attributes[0].Level != AttributeLevelResource {
+		t.Errorf("expected resource first, got %s", entries[0].Attributes[0].Level)
+	}
+	if entries[0].Attributes[1].Level != AttributeLevelScope {
+		t.Errorf("expected scope second, got %s", entries[0].Attributes[1].Level)
+	}
+	if entries[0].Attributes[2].Level != AttributeLevelDatapoint {
+		t.Errorf("expected datapoint third, got %s", entries[0].Attributes[2].Level)
+	}
+}
+
+func TestCatalog_RecordAttributes_Deduplication(t *testing.T) {
+	c := NewCatalog(5 * time.Minute)
+	c.Record("my.metric", MetricTypeGauge, nil, 1)
+
+	// Record same value multiple times
+	for i := 0; i < 5; i++ {
+		c.RecordAttributes("my.metric", AttributeLevelResource, []AttributeKV{
+			{Key: "service.name", Value: "api"},
+		})
+	}
+
+	entries := c.Entries()
+	attr := entries[0].Attributes[0]
+	if len(attr.SampleValues) != 1 {
+		t.Errorf("expected 1 sample (deduplicated), got %d", len(attr.SampleValues))
+	}
+	if attr.UniqueCount != 1 {
+		t.Errorf("expected unique count 1 (deduplicated), got %d", attr.UniqueCount)
+	}
+	if attr.Capped {
+		t.Error("expected capped to be false")
+	}
+}
+
+func TestCatalog_RecordAttributes_NoopForUnknownMetric(t *testing.T) {
+	c := NewCatalog(5 * time.Minute)
+
+	// No metric recorded yet — should be a no-op
+	c.RecordAttributes("nonexistent", AttributeLevelResource, []AttributeKV{
+		{Key: "k", Value: "v"},
+	})
+
+	if c.Len() != 0 {
+		t.Error("expected 0 entries after recording attrs for nonexistent metric")
+	}
+}
+
+func TestCatalog_RecordAttributes_EmptySlice(t *testing.T) {
+	c := NewCatalog(5 * time.Minute)
+	c.Record("my.metric", MetricTypeGauge, nil, 1)
+
+	// Empty attrs should be a no-op
+	c.RecordAttributes("my.metric", AttributeLevelResource, nil)
+	c.RecordAttributes("my.metric", AttributeLevelResource, []AttributeKV{})
+
+	entries := c.Entries()
+	if len(entries[0].Attributes) != 0 {
+		t.Errorf("expected 0 attributes for empty record, got %d", len(entries[0].Attributes))
+	}
+}
+
+func TestCatalog_RecordAttributes_ClearResetsTrackers(t *testing.T) {
+	c := NewCatalog(5 * time.Minute)
+	c.Record("my.metric", MetricTypeGauge, nil, 1)
+	c.RecordAttributes("my.metric", AttributeLevelResource, []AttributeKV{
+		{Key: "service.name", Value: "api"},
+	})
+
+	c.Clear()
+
+	if c.Len() != 0 {
+		t.Error("expected 0 entries after clear")
+	}
+
+	// Re-record and verify clean state
+	c.Record("my.metric", MetricTypeGauge, nil, 1)
+	entries := c.Entries()
+	if len(entries[0].Attributes) != 0 {
+		t.Errorf("expected 0 attributes after clear and re-record, got %d", len(entries[0].Attributes))
+	}
+}
+
+func TestCatalog_RecordAttributes_ConcurrentAccess(t *testing.T) {
+	c := NewCatalog(5 * time.Minute)
+	c.Record("my.metric", MetricTypeGauge, nil, 1)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			c.RecordAttributes("my.metric", AttributeLevelDatapoint, []AttributeKV{
+				{Key: "id", Value: fmt.Sprintf("v%d", n)},
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	entries := c.Entries()
+	if len(entries[0].Attributes) != 1 {
+		t.Fatalf("expected 1 attribute key, got %d", len(entries[0].Attributes))
+	}
+	attr := entries[0].Attributes[0]
+	if attr.Key != "id" {
+		t.Errorf("expected key 'id', got %q", attr.Key)
+	}
+	// Should have tracked at most MaxSampleValues samples
+	if len(attr.SampleValues) > MaxSampleValues {
+		t.Errorf("expected at most %d samples, got %d", MaxSampleValues, len(attr.SampleValues))
+	}
+}
+
+func TestCatalog_RecordAttributes_UniqueCountStableAcrossScrapes(t *testing.T) {
+	c := NewCatalog(5 * time.Minute)
+	c.Record("system.disk.operations", MetricTypeSum, nil, 186)
+
+	// Simulate a fixed set of 10 attribute combos repeated across many scrapes.
+	values := []string{"v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9"}
+	for scrape := 0; scrape < 50; scrape++ {
+		for _, v := range values {
+			c.RecordAttributes("system.disk.operations", AttributeLevelDatapoint, []AttributeKV{
+				{Key: "device", Value: v},
+			})
+		}
+	}
+
+	entries := c.Entries()
+	attr := entries[0].Attributes[0]
+	if attr.UniqueCount != 10 {
+		t.Errorf("expected unique count 10 (stable across scrapes), got %d", attr.UniqueCount)
+	}
+	if attr.Capped {
+		t.Error("expected capped=false with only 10 unique values")
+	}
+}
+
+func TestCatalog_RecordAttributes_UniqueCountStableWhenCapped(t *testing.T) {
+	c := NewCatalog(5 * time.Minute)
+	c.Record("high.card.metric", MetricTypeSum, nil, 200)
+
+	// First: push past the cap with 30 unique values.
+	for i := 0; i < 30; i++ {
+		c.RecordAttributes("high.card.metric", AttributeLevelDatapoint, []AttributeKV{
+			{Key: "id", Value: fmt.Sprintf("unique-%d", i)},
+		})
+	}
+
+	// Then: simulate 100 more scrapes re-sending the same 200 data points.
+	// Before the fix, uniqueN would grow by 200 per scrape.
+	for scrape := 0; scrape < 100; scrape++ {
+		for i := 0; i < 200; i++ {
+			c.RecordAttributes("high.card.metric", AttributeLevelDatapoint, []AttributeKV{
+				{Key: "id", Value: fmt.Sprintf("dp-%d", i)},
+			})
+		}
+	}
+
+	entries := c.Entries()
+	attr := entries[0].Attributes[0]
+	if !attr.Capped {
+		t.Fatal("expected capped=true")
+	}
+	// UniqueCount must be exactly MaxSampleValues, not growing with each scrape.
+	if attr.UniqueCount != MaxSampleValues {
+		t.Errorf("expected unique count %d (frozen at cap), got %d", MaxSampleValues, attr.UniqueCount)
 	}
 }
 

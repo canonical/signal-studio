@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -8,15 +9,37 @@ import (
 )
 
 type tapHandler struct {
-	mgr *tap.Manager
+	mgr             *tap.Manager
+	defaultGRPCAddr string
+	defaultHTTPAddr string
+}
+
+type tapStartRequest struct {
+	GRPCAddr string `json:"grpcAddr"`
+	HTTPAddr string `json:"httpAddr"`
 }
 
 func (h *tapHandler) handleStart(w http.ResponseWriter, r *http.Request) {
-	// Start is only used as a fallback — normally the tap is started via
-	// the TAP_ENABLED env var on server startup.
+	var req tapStartRequest
+	if r.Body != nil && r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+			return
+		}
+	}
+
+	grpcAddr := req.GRPCAddr
+	if grpcAddr == "" {
+		grpcAddr = h.defaultGRPCAddr
+	}
+	httpAddr := req.HTTPAddr
+	if httpAddr == "" {
+		httpAddr = h.defaultHTTPAddr
+	}
+
 	err := h.mgr.Start(tap.TapConfig{
-		GRPCAddr: ":4317",
-		HTTPAddr: ":4318",
+		GRPCAddr: grpcAddr,
+		HTTPAddr: httpAddr,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error()})
@@ -39,6 +62,9 @@ func (h *tapHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"grpcAddr": grpcAddr,
 		"httpAddr": httpAddr,
 	}
+	if status == tap.TapStatusDisabled {
+		resp["disabled"] = true
+	}
 	if lastErr != "" {
 		resp["error"] = lastErr
 	}
@@ -49,16 +75,25 @@ func (h *tapHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *tapHandler) handleCatalog(w http.ResponseWriter, r *http.Request) {
-	catalog := h.mgr.Catalog()
-	entries := catalog.Entries()
+	metricCatalog := h.mgr.Catalog()
+	metricEntries := metricCatalog.Entries()
+	spanEntries := h.mgr.SpanCatalog().Entries()
+	logEntries := h.mgr.LogCatalog().Entries()
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"entries":     entries,
-		"count":       len(entries),
-		"rateChanged": catalog.RateChanged(),
+		"metrics":     metricEntries,
+		"spans":       spanEntries,
+		"logs":        logEntries,
+		"count":       len(metricEntries),
+		"spanCount":   len(spanEntries),
+		"logCount":    len(logEntries),
+		"rateChanged": metricCatalog.RateChanged(),
 	})
 }
 
 func (h *tapHandler) handleReset(w http.ResponseWriter, r *http.Request) {
 	h.mgr.Catalog().Clear()
+	h.mgr.SpanCatalog().Clear()
+	h.mgr.LogCatalog().Clear()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

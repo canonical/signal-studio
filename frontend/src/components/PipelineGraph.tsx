@@ -4,8 +4,8 @@ import type {
   Finding,
   MetricEntry,
   MetricsSnapshot,
-  Pipeline,
   Signal,
+  SpanEntry,
 } from "../types/api";
 import { componentType, componentQualifier } from "../types/api";
 import { StatusIcon } from "./StatusIcon";
@@ -23,6 +23,7 @@ interface PipelineGraphProps {
   metricsSnapshot?: MetricsSnapshot | null;
   filterAnalyses?: FilterAnalysis[];
   catalogEntries?: MetricEntry[];
+  spanEntries?: SpanEntry[];
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -107,7 +108,7 @@ function findingCount(
   return findings.filter(
     (f) =>
       ruleSet.includes(f.ruleId) &&
-      (f.pipeline === pipelineName || !f.pipeline),
+      (f.scope === `pipeline:${pipelineName}` || !f.scope),
   ).length;
 }
 
@@ -121,7 +122,7 @@ function worstSeverity(
   const relevant = findings.filter(
     (f) =>
       ruleSet.includes(f.ruleId) &&
-      (f.pipeline === pipelineName || !f.pipeline),
+      (f.scope === `pipeline:${pipelineName}` || !f.scope),
   );
 
   if (relevant.length === 0) return "ok";
@@ -132,6 +133,45 @@ function worstSeverity(
 
 function capitalize(name: string): string {
   return name.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function SignalIcon({ signal }: { signal: Signal }) {
+  const props = {
+    className: "pipeline-section__signal-icon",
+    width: 14,
+    height: 14,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.5,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  switch (signal) {
+    case "metrics":
+      return (
+        <svg {...props}>
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+        </svg>
+      );
+    case "traces":
+      return (
+        <svg {...props}>
+          <rect x="2" y="4" width="20" height="4" rx="1" />
+          <rect x="6" y="11" width="14" height="4" rx="1" />
+          <rect x="10" y="18" width="8" height="4" rx="1" />
+        </svg>
+      );
+    case "logs":
+      return (
+        <svg {...props}>
+          <line x1="3" y1="5" x2="21" y2="5" />
+          <line x1="3" y1="10" x2="17" y2="10" />
+          <line x1="3" y1="15" x2="19" y2="15" />
+          <line x1="3" y1="20" x2="14" y2="20" />
+        </svg>
+      );
+  }
 }
 
 /** Format a per-second rate, choosing /s or /min based on magnitude. */
@@ -158,6 +198,7 @@ function cardThroughput(
   snapshot: MetricsSnapshot | null | undefined,
   role: ColumnRole,
   items: string[],
+  signal: Signal,
 ): ThroughputInfo | null {
   if (!snapshot) return null;
 
@@ -166,10 +207,7 @@ function cardThroughput(
     for (const item of items) {
       const rm = snapshot.receivers[item];
       if (rm) {
-        total +=
-          rm.acceptedSpansRate +
-          rm.acceptedMetricPointsRate +
-          rm.acceptedLogRecordsRate;
+        total += receiverRateForSignal(rm, signal);
       }
     }
     return total > 0 ? { rate: `${formatRateWithUnit(total)} in` } : null;
@@ -181,8 +219,7 @@ function cardThroughput(
     for (const item of items) {
       const em = snapshot.exporters[item];
       if (em) {
-        totalSent +=
-          em.sentSpansRate + em.sentMetricPointsRate + em.sentLogRecordsRate;
+        totalSent += exporterRateForSignal(em, signal);
         if (em.queueCapacity > 0) {
           queuePct = em.queueUtilizationPct;
         }
@@ -223,28 +260,6 @@ function exporterRateForSignal(
   return em.sentLogRecordsRate;
 }
 
-/** Compute aggregate in/out throughput label for a pipeline. */
-function pipelineThroughput(
-  snapshot: MetricsSnapshot | null | undefined,
-  pipeline: Pipeline,
-): string | null {
-  if (!snapshot) return null;
-
-  let inRate = 0;
-  for (const recv of pipeline.receivers ?? []) {
-    const rm = snapshot.receivers[recv];
-    if (rm) inRate += receiverRateForSignal(rm, pipeline.signal);
-  }
-
-  let outRate = 0;
-  for (const exp of pipeline.exporters ?? []) {
-    const em = snapshot.exporters[exp];
-    if (em) outRate += exporterRateForSignal(em, pipeline.signal);
-  }
-
-  if (inRate === 0 && outRate === 0) return null;
-  return `${formatRateWithUnit(inRate)} in \u2192 ${formatRateWithUnit(outRate)} out`;
-}
 
 type PillIconType = "stack" | "timer" | "kept" | "dropped" | "memory" | "spike";
 
@@ -358,31 +373,107 @@ function PillIcon({ icon }: { icon: PillIconType }) {
   }
 }
 
+interface VolumeChangeInfo {
+  changePct: number;
+  totalPoints: number;
+  windowMs: number;
+}
+
+type VolumeConfidence = "High" | "Medium" | "Low";
+
+function volumeConfidence(totalPoints: number): VolumeConfidence {
+  if (totalPoints >= 50_000) return "High";
+  if (totalPoints >= 5_000) return "Medium";
+  return "Low";
+}
+
+function formatDuration(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s}s`;
+}
+
+function formatCount(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+function volumeTooltip(info: VolumeChangeInfo, signalLabel: string): string {
+  const conf = volumeConfidence(info.totalPoints);
+  return [
+    `Observed reduction in ${signalLabel}`,
+    `Window: ${formatDuration(info.windowMs)}`,
+    `Evaluated: ${formatCount(info.totalPoints)} datapoints`,
+    `Confidence: ${conf}`,
+  ].join("\n");
+}
+
 /** Compute per-filter volume change percentage from catalog data. */
 function filterVolumeChange(
   fa: FilterAnalysis,
   catalogEntries: MetricEntry[] | undefined,
-): number | null {
-  if (!catalogEntries || catalogEntries.length === 0) return null;
-  if (fa.droppedCount === 0 && fa.keptCount === 0) return null;
+  spanEntries: SpanEntry[] | undefined,
+  pipelineSignal: Signal,
+): VolumeChangeInfo | null {
+  if (fa.droppedCount === 0 && fa.partialCount === 0 && fa.keptCount === 0)
+    return null;
+
+  const droppedNames = new Set<string>();
+  const partialRatios = new Map<string, number>();
+  for (const r of fa.results ?? []) {
+    if (r.outcome === "dropped") droppedNames.add(r.metricName);
+    if (r.outcome === "partial" && r.droppedRatio != null) {
+      partialRatios.set(r.metricName, r.droppedRatio);
+    }
+  }
 
   let keptPoints = 0;
   let totalPoints = 0;
+  let earliest = Infinity;
+  let latest = -Infinity;
 
-  const droppedNames = new Set<string>();
-  for (const r of fa.results ?? []) {
-    if (r.outcome === "dropped") droppedNames.add(r.metricName);
-  }
-
-  for (const entry of catalogEntries) {
-    totalPoints += entry.pointCount;
-    if (!droppedNames.has(entry.name)) {
-      keptPoints += entry.pointCount;
+  if (pipelineSignal === "traces") {
+    if (!spanEntries || spanEntries.length === 0) return null;
+    for (const entry of spanEntries) {
+      totalPoints += entry.spanCount;
+      const first = new Date(entry.firstSeenAt).getTime();
+      const last = new Date(entry.lastSeenAt).getTime();
+      if (first < earliest) earliest = first;
+      if (last > latest) latest = last;
+      if (droppedNames.has(entry.spanName)) continue;
+      const ratio = partialRatios.get(entry.spanName);
+      if (ratio != null) {
+        keptPoints += entry.spanCount * (1 - ratio);
+      } else {
+        keptPoints += entry.spanCount;
+      }
+    }
+  } else {
+    if (!catalogEntries || catalogEntries.length === 0) return null;
+    for (const entry of catalogEntries) {
+      totalPoints += entry.pointCount;
+      const first = new Date(entry.firstSeenAt).getTime();
+      const last = new Date(entry.lastSeenAt).getTime();
+      if (first < earliest) earliest = first;
+      if (last > latest) latest = last;
+      if (droppedNames.has(entry.name)) continue;
+      const ratio = partialRatios.get(entry.name);
+      if (ratio != null) {
+        keptPoints += entry.pointCount * (1 - ratio);
+      } else {
+        keptPoints += entry.pointCount;
+      }
     }
   }
 
   if (totalPoints === 0) return null;
-  return ((keptPoints - totalPoints) / totalPoints) * 100;
+  const windowMs = latest > earliest ? latest - earliest : 0;
+  return {
+    changePct: ((keptPoints - totalPoints) / totalPoints) * 100,
+    totalPoints,
+    windowMs,
+  };
 }
 
 /** Get filter analysis for a processor, if available. */
@@ -407,6 +498,7 @@ export function PipelineGraph({
   metricsSnapshot,
   filterAnalyses,
   catalogEntries,
+  spanEntries,
 }: PipelineGraphProps) {
   const pipelines = Object.entries(config.pipelines);
 
@@ -427,29 +519,15 @@ export function PipelineGraph({
           { role: "exporters", items: pipeline.exporters ?? [] },
         ];
 
-        const throughputLabel = pipelineThroughput(metricsSnapshot, pipeline);
         const metricsConnected = metricsSnapshot?.status === "connected";
         return (
           <div key={name} className="pipeline-section">
             <h3 className="pipeline-section__title">
+              <SignalIcon signal={pipeline.signal} />
               {capitalize(name)}
-              {throughputLabel ? (
-                <span className="pipeline-section__throughput">
-                  ({throughputLabel})
-                </span>
-              ) : metricsConnected ? (
-                <span className="pipeline-section__throughput pipeline-section__throughput--pending">
-                  Waiting for enough data to be collected&hellip;
-                </span>
-              ) : null}
             </h3>
             <div className="pipeline-section__cards">
               {columns.map((col) => {
-                const throughput = cardThroughput(
-                  metricsSnapshot,
-                  col.role,
-                  col.items,
-                );
                 const issueCount = findingCount(findings, name, col.role);
                 const status = worstSeverity(findings, name, col.role);
                 const isActive =
@@ -527,7 +605,7 @@ export function PipelineGraph({
                                 ? filterAnalysis(item, filterAnalyses)
                                 : null;
                             const volChange = fa
-                              ? filterVolumeChange(fa, catalogEntries)
+                              ? filterVolumeChange(fa, catalogEntries, spanEntries, pipeline.signal)
                               : null;
                             const pills =
                               col.role === "processors"
@@ -539,7 +617,7 @@ export function PipelineGraph({
                                   )
                                 : [];
                             const hasPills =
-                              volChange != null || pills.length > 0;
+                              volChange !== null || pills.length > 0;
 
                             return (
                               <div
@@ -606,10 +684,10 @@ export function PipelineGraph({
                                   {displayName}
                                   {hasPills && (
                                     <span className="pipeline-card__filter-stats">
-                                      {volChange != null && (
+                                      {volChange !== null && (
                                         <span
-                                          className={`pipeline-card__filter-stat ${volChange < 0 ? "pipeline-card__filter-stat--kept" : volChange > 0 ? "pipeline-card__filter-stat--dropped" : "pipeline-card__filter-stat--neutral"}`}
-                                          title={`Projected volume change: ${volChange > 0 ? "+" : ""}${volChange.toFixed(1)}% based on observed metric data point rates`}
+                                          className={`pipeline-card__filter-stat ${volChange.changePct < 0 ? "pipeline-card__filter-stat--kept" : volChange.changePct > 0 ? "pipeline-card__filter-stat--dropped" : "pipeline-card__filter-stat--neutral"}`}
+                                          title={volumeTooltip(volChange, pipeline.signal === "traces" ? "span datapoints" : "metric datapoints")}
                                         >
                                           <svg
                                             className="pipeline-card__pill-icon"
@@ -622,7 +700,7 @@ export function PipelineGraph({
                                             strokeLinecap="round"
                                             strokeLinejoin="round"
                                           >
-                                            {volChange < 0 ? (
+                                            {volChange.changePct < 0 ? (
                                               <>
                                                 <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" />
                                                 <polyline points="17 18 23 18 23 12" />
@@ -634,8 +712,8 @@ export function PipelineGraph({
                                               </>
                                             )}
                                           </svg>
-                                          {volChange > 0 ? "+" : ""}
-                                          {volChange.toFixed(0)}%
+                                          {volChange.changePct > 0 ? "+" : ""}
+                                          {volChange.changePct.toFixed(0)}%
                                         </span>
                                       )}
                                       {pills.map((p) => (
@@ -674,8 +752,24 @@ export function PipelineGraph({
                           })
                         )}
                       </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {metricsConnected && (
+              <div className="pipeline-section__footer">
+                {columns.map((col) => {
+                  const throughput = cardThroughput(
+                    metricsSnapshot,
+                    col.role,
+                    col.items,
+                    pipeline.signal,
+                  );
+                  return (
+                    <div key={col.role} className="pipeline-section__footer-cell">
                       {throughput ? (
-                        <div className="pipeline-card__metrics">
+                        <>
                           <svg
                             className="pipeline-card__metrics-icon"
                             width="12"
@@ -717,38 +811,29 @@ export function PipelineGraph({
                               {throughput.queuePct.toFixed(0)}%
                             </span>
                           )}
-                        </div>
-                      ) : metricsConnected && col.role !== "processors" ? (
-                        <div className="pipeline-card__metrics pipeline-card__metrics--pending">
+                        </>
+                      ) : col.role !== "processors" ? (
+                        <span className="pipeline-section__footer-pending">
                           <svg
-                            className="pipeline-card__metrics-icon"
+                            className="pipeline-section__footer-spinner"
                             width="12"
                             height="12"
                             viewBox="0 0 24 24"
                             fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
+                            stroke="#888"
+                            strokeWidth="2.5"
                             strokeLinecap="round"
-                            strokeLinejoin="round"
                           >
-                            <path d="M12 22C6.5 22 2 17.5 2 12S6.5 2 12 2s10 4.5 10 10" />
-                            <path d="M12 12l4-4" />
-                            <circle
-                              cx="12"
-                              cy="12"
-                              r="1.5"
-                              fill="currentColor"
-                              stroke="none"
-                            />
+                            <path d="M12 2a10 10 0 0 1 10 10" />
                           </svg>
-                          Waiting for enough data to be collected&hellip;
-                        </div>
+                          Waiting&hellip;
+                        </span>
                       ) : null}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}

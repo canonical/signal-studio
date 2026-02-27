@@ -49,6 +49,11 @@ func (h *metricsHandler) handleSnapshot(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, snap)
 }
 
+func (h *metricsHandler) handleReset(w http.ResponseWriter, r *http.Request) {
+	h.mgr.ResetStore()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *metricsHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 	status, lastErr := h.mgr.Status()
 	resp := map[string]string{"status": string(status)}

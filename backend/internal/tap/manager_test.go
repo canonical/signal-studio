@@ -6,7 +6,7 @@ import (
 )
 
 func TestManager_StartStop(t *testing.T) {
-	mgr := NewManager()
+	mgr := NewManager(false)
 
 	status, _, _ := mgr.Status()
 	if status != TapStatusIdle {
@@ -38,7 +38,7 @@ func TestManager_StartStop(t *testing.T) {
 }
 
 func TestManager_StaysListening(t *testing.T) {
-	mgr := NewManager()
+	mgr := NewManager(false)
 
 	err := mgr.Start(TapConfig{
 		GRPCAddr: ":0",
@@ -59,7 +59,7 @@ func TestManager_StaysListening(t *testing.T) {
 }
 
 func TestManager_CatalogPersistsAcrossRestarts(t *testing.T) {
-	mgr := NewManager()
+	mgr := NewManager(false)
 
 	err := mgr.Start(TapConfig{GRPCAddr: ":0", HTTPAddr: ":0"})
 	if err != nil {
@@ -84,7 +84,7 @@ func TestManager_CatalogPersistsAcrossRestarts(t *testing.T) {
 }
 
 func TestManager_StartWhileListening(t *testing.T) {
-	mgr := NewManager()
+	mgr := NewManager(false)
 
 	err := mgr.Start(TapConfig{GRPCAddr: ":0", HTTPAddr: ":0"})
 	if err != nil {
@@ -106,7 +106,7 @@ func TestManager_StartWhileListening(t *testing.T) {
 }
 
 func TestManager_StartFailure(t *testing.T) {
-	mgr := NewManager()
+	mgr := NewManager(false)
 
 	err := mgr.Start(TapConfig{
 		GRPCAddr: "invalid-not-a-real-addr:99999999",
@@ -127,7 +127,7 @@ func TestManager_StartFailure(t *testing.T) {
 }
 
 func TestManager_Addrs(t *testing.T) {
-	mgr := NewManager()
+	mgr := NewManager(false)
 
 	err := mgr.Start(TapConfig{GRPCAddr: ":0", HTTPAddr: ":0"})
 	if err != nil {
@@ -145,7 +145,7 @@ func TestManager_Addrs(t *testing.T) {
 }
 
 func TestManager_TimestampCorrectness(t *testing.T) {
-	mgr := NewManager()
+	mgr := NewManager(false)
 	before := time.Now()
 
 	err := mgr.Start(TapConfig{GRPCAddr: ":0", HTTPAddr: ":0"})
@@ -160,5 +160,26 @@ func TestManager_TimestampCorrectness(t *testing.T) {
 
 	if startedAt.Before(before) || startedAt.After(after) {
 		t.Errorf("startedAt %v not between %v and %v", startedAt, before, after)
+	}
+}
+
+func TestManager_Disabled(t *testing.T) {
+	mgr := NewManager(true)
+
+	status, _, _ := mgr.Status()
+	if status != TapStatusDisabled {
+		t.Fatalf("expected disabled, got %s", status)
+	}
+
+	err := mgr.Start(TapConfig{GRPCAddr: ":0", HTTPAddr: ":0"})
+	if err == nil {
+		mgr.Stop()
+		t.Fatal("expected error when starting disabled manager")
+	}
+
+	// Status should still be disabled after failed start
+	status, _, _ = mgr.Status()
+	if status != TapStatusDisabled {
+		t.Errorf("expected disabled after failed start, got %s", status)
 	}
 }

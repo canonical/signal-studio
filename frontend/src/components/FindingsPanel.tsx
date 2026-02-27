@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Finding, Severity } from "../types/api";
+import type { Confidence, Finding, Severity } from "../types/api";
 import { StatusIcon } from "./StatusIcon";
 
 interface FindingsPanelProps {
@@ -7,6 +7,12 @@ interface FindingsPanelProps {
 }
 
 const SEVERITY_ORDER: Severity[] = ["critical", "warning", "info"];
+
+const CONFIDENCE_LABEL: Record<Confidence, string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
+};
 
 export function FindingsPanel({ findings }: FindingsPanelProps) {
   const sorted = [...findings].sort(
@@ -21,7 +27,7 @@ export function FindingsPanel({ findings }: FindingsPanelProps) {
   return (
     <div className="findings-list">
       {sorted.map((f, i) => (
-        <FindingItem key={`${f.ruleId}-${f.pipeline}-${i}`} finding={f} />
+        <FindingItem key={`${f.ruleId}-${f.scope}-${i}`} finding={f} />
       ))}
     </div>
   );
@@ -50,41 +56,71 @@ function FindingItem({ finding }: { finding: Finding }) {
         <StatusIcon status={finding.severity} size={18} />
       </div>
       <div className="finding-item__content">
-        <span className="finding-item__title">{finding.title}</span>
-        <p className="finding-item__explanation">{finding.explanation}</p>
+        <div className="finding-item__header">
+          <span className="finding-item__title">{finding.title}</span>
+        </div>
+        <div className="finding-item__pills">
+          {finding.scope && (
+            <span className="finding-item__scope">{finding.scope}</span>
+          )}
+          <span
+            className={`finding-item__confidence finding-item__confidence--${finding.confidence}`}
+          >
+            Confidence: {CONFIDENCE_LABEL[finding.confidence]}
+          </span>
+        </div>
 
         {expanded && (
           <div
             className="finding-item__details"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="finding-item__detail-row">
-              <span className="finding-item__detail-label">Evidence</span>
-              <span>{finding.evidence}</span>
-            </div>
-            <div className="finding-item__detail-row">
-              <span className="finding-item__detail-label">Why it matters</span>
-              <span>{finding.whyItMatters}</span>
-            </div>
-            <div className="finding-item__detail-row">
-              <span className="finding-item__detail-label">Impact</span>
-              <span>{finding.impact}</span>
-            </div>
-            <div className="finding-item__detail-row">
-              <span className="finding-item__detail-label">Suggestion</span>
-              <span>{finding.placement}</span>
-            </div>
-            <div className="finding-item__snippet">
-              <div className="finding-item__snippet-header">
-                <span className="finding-item__snippet-title">Snippet</span>
-                <button className="finding-item__copy-btn" onClick={handleCopy}>
-                  {copied ? "Copied!" : "Copy"}
-                </button>
+            {finding.evidence && (
+              <div className="finding-item__detail-row finding-item__detail-row--observed">
+                <span className="finding-item__detail-label">Evidence</span>
+                <span>{finding.evidence}</span>
               </div>
-              <pre className="finding-item__snippet-code">
-                <code>{finding.snippet}</code>
-              </pre>
+            )}
+            {finding.implication && (
+              <>
+                <span className="finding-item__detail-label">Implication</span>
+                <div className="finding-item__detail-row">
+                  <span>
+                    {finding.implication.split("\n").map((para, j, arr) => (
+                      <span key={j}>
+                        {para}
+                        {j < arr.length - 1 && (
+                          <>
+                            <br />
+                            <br />
+                          </>
+                        )}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              </>
+            )}
+            <div className="finding-item__detail-row">
+              <span className="finding-item__detail-label">Recommendation</span>
+              <span>{finding.recommendation}</span>
             </div>
+            {finding.snippet && (
+              <div className="finding-item__snippet">
+                <div className="finding-item__snippet-header">
+                  <span className="finding-item__snippet-title">Snippet</span>
+                  <button
+                    className="finding-item__copy-btn"
+                    onClick={handleCopy}
+                  >
+                    {copied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+                <pre className="finding-item__snippet-code">
+                  <code>{finding.snippet}</code>
+                </pre>
+              </div>
+            )}
           </div>
         )}
       </div>

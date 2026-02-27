@@ -17,11 +17,17 @@ const (
 type MatchType string
 
 const (
-	MatchTypeRegexp       MatchType = "regexp"
-	MatchTypeStrict       MatchType = "strict"
-	MatchTypeOTTLNameEq   MatchType = "ottl_name_eq"
-	MatchTypeOTTLIsMatch  MatchType = "ottl_ismatch"
-	MatchTypeUnsupported  MatchType = "unsupported"
+	MatchTypeRegexp                MatchType = "regexp"
+	MatchTypeStrict                MatchType = "strict"
+	MatchTypeOTTLNameEq            MatchType = "ottl_name_eq"
+	MatchTypeOTTLIsMatch           MatchType = "ottl_ismatch"
+	MatchTypeOTTLResourceAttr      MatchType = "ottl_resource_attr_eq"
+	MatchTypeOTTLDatapointAttr     MatchType = "ottl_datapoint_attr_eq"
+	MatchTypeOTTLResourceAttrMatch MatchType = "ottl_resource_attr_match"
+	MatchTypeOTTLDatapointAttrMatch MatchType = "ottl_datapoint_attr_match"
+	MatchTypeOTTLHasAttrKey        MatchType = "ottl_has_attr_key"
+	MatchTypeOTTLHasAttr           MatchType = "ottl_has_attr"
+	MatchTypeUnsupported           MatchType = "unsupported"
 )
 
 // FilterRule represents a single filter condition.
@@ -30,6 +36,8 @@ type FilterRule struct {
 	Action    Action    `json:"action"`
 	MatchType MatchType `json:"matchType"`
 	Pattern   string    `json:"pattern"`
+	AttrKey   string    `json:"attrKey,omitempty"`
+	AttrValue string    `json:"attrValue,omitempty"`
 }
 
 // FilterConfig describes a filter processor extracted from a CollectorConfig.
@@ -80,6 +88,7 @@ func pipelinesForProcessor(cfg *config.CollectorConfig, procName string) []strin
 }
 
 // extractSingleFilter parses the filter config from a processor's raw config map.
+// It looks for metrics, traces, and logs signal blocks.
 func extractSingleFilter(name string, raw map[string]any) FilterConfig {
 	fc := FilterConfig{
 		ProcessorName: name,
@@ -89,26 +98,58 @@ func extractSingleFilter(name string, raw map[string]any) FilterConfig {
 		return fc
 	}
 
-	metricsRaw, ok := raw["metrics"]
-	if !ok {
-		return fc
-	}
-	metricsMap, ok := metricsRaw.(map[string]any)
-	if !ok {
-		return fc
+	// Try metrics block
+	if metricsRaw, ok := raw["metrics"]; ok {
+		if metricsMap, ok := metricsRaw.(map[string]any); ok {
+			extractMetricsBlock(&fc, metricsMap)
+			if len(fc.Rules) > 0 {
+				return fc
+			}
+		}
 	}
 
-	// Check for OTTL style: metrics.metric[] (list of string expressions)
+	// Try traces block
+	if tracesRaw, ok := raw["traces"]; ok {
+		if tracesMap, ok := tracesRaw.(map[string]any); ok {
+			extractTracesBlock(&fc, tracesMap)
+			if len(fc.Rules) > 0 {
+				return fc
+			}
+		}
+	}
+
+	return fc
+}
+
+func extractMetricsBlock(fc *FilterConfig, metricsMap map[string]any) {
+	hasOTTL := false
+
 	if metricRaw, ok := metricsMap["metric"]; ok {
 		if exprs, ok := metricRaw.([]any); ok && len(exprs) > 0 {
+			hasOTTL = true
 			fc.Style = "ottl"
 			for _, e := range exprs {
 				if s, ok := e.(string); ok {
-					fc.Rules = append(fc.Rules, parseOTTLNameExpression(s))
+					fc.Rules = append(fc.Rules, parseOTTLExpression(s))
 				}
 			}
-			return fc
 		}
+	}
+
+	if dpRaw, ok := metricsMap["datapoint"]; ok {
+		if exprs, ok := dpRaw.([]any); ok && len(exprs) > 0 {
+			hasOTTL = true
+			fc.Style = "ottl"
+			for _, e := range exprs {
+				if s, ok := e.(string); ok {
+					fc.Rules = append(fc.Rules, parseOTTLExpression(s))
+				}
+			}
+		}
+	}
+
+	if hasOTTL {
+		return
 	}
 
 	// Legacy style: metrics.include / metrics.exclude
@@ -127,8 +168,20 @@ func extractSingleFilter(name string, raw map[string]any) FilterConfig {
 			fc.Rules = append(fc.Rules, rules...)
 		}
 	}
+}
 
-	return fc
+func extractTracesBlock(fc *FilterConfig, tracesMap map[string]any) {
+	// OTTL style: traces.span[]
+	if spanRaw, ok := tracesMap["span"]; ok {
+		if exprs, ok := spanRaw.([]any); ok && len(exprs) > 0 {
+			fc.Style = "ottl"
+			for _, e := range exprs {
+				if s, ok := e.(string); ok {
+					fc.Rules = append(fc.Rules, parseOTTLExpression(s))
+				}
+			}
+		}
+	}
 }
 
 // parseLegacyBlock parses an include/exclude block with match_type and metric_names.

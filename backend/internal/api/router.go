@@ -22,8 +22,20 @@ func NewRouter(mgr *metrics.Manager, tapMgr *tap.Manager) http.Handler {
 	mux.HandleFunc("POST /api/metrics/disconnect", mh.handleDisconnect)
 	mux.HandleFunc("GET /api/metrics/snapshot", mh.handleSnapshot)
 	mux.HandleFunc("GET /api/metrics/status", mh.handleStatus)
+	mux.HandleFunc("POST /api/metrics/reset", mh.handleReset)
 
-	th := &tapHandler{mgr: tapMgr}
+	grpcAddr := os.Getenv("TAP_GRPC_ADDR")
+	if grpcAddr == "" {
+		grpcAddr = ":5317"
+	}
+	httpAddr := os.Getenv("TAP_HTTP_ADDR")
+	if httpAddr == "" {
+		httpAddr = ":5318"
+	}
+	ach := &alertCoverageHandler{tapMgr: tapMgr}
+	mux.HandleFunc("POST /api/alert-coverage", ach.handleAlertCoverage)
+
+	th := &tapHandler{mgr: tapMgr, defaultGRPCAddr: grpcAddr, defaultHTTPAddr: httpAddr}
 	mux.HandleFunc("POST /api/tap/start", th.handleStart)
 	mux.HandleFunc("POST /api/tap/stop", th.handleStop)
 	mux.HandleFunc("GET /api/tap/status", th.handleStatus)

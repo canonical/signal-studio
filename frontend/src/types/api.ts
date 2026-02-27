@@ -21,17 +21,18 @@ export interface CollectorConfig {
   pipelines: Record<string, Pipeline>;
 }
 
+export type Confidence = "high" | "medium" | "low";
+
 export interface Finding {
   ruleId: string;
   title: string;
   severity: Severity;
+  confidence: Confidence;
   evidence: string;
-  explanation: string;
-  whyItMatters: string;
-  impact: string;
+  implication: string;
+  recommendation: string;
   snippet: string;
-  placement: string;
-  pipeline?: string;
+  scope?: string;
 }
 
 export interface AnalyzeResponse {
@@ -42,7 +43,7 @@ export interface AnalyzeResponse {
 
 // Tap types
 
-export type TapStatus = "idle" | "listening" | "stopping" | "error";
+export type TapStatus = "idle" | "listening" | "stopping" | "error" | "disabled";
 
 export type MetricType =
   | "gauge"
@@ -51,10 +52,21 @@ export type MetricType =
   | "summary"
   | "exponential_histogram";
 
+export type AttributeLevel = "resource" | "scope" | "datapoint";
+
+export interface AttributeMeta {
+  key: string;
+  level: AttributeLevel;
+  sampleValues: string[];
+  uniqueCount: number;
+  capped: boolean;
+}
+
 export interface MetricEntry {
   name: string;
   type: MetricType;
   attributeKeys: string[];
+  attributes?: AttributeMeta[];
   pointCount: number;
   scrapeCount: number;
   lastSeenAt: string;
@@ -69,20 +81,76 @@ export interface TapStatusResponse {
   httpAddr?: string;
 }
 
-export interface TapCatalogResponse {
-  entries: MetricEntry[];
+export type SpanKind =
+  | "client"
+  | "server"
+  | "internal"
+  | "producer"
+  | "consumer"
+  | "unset";
+
+export type SpanStatusCode = "unset" | "ok" | "error";
+
+export type SeverityRange =
+  | "trace"
+  | "debug"
+  | "info"
+  | "warn"
+  | "error"
+  | "fatal"
+  | "unset";
+
+export interface SpanEntry {
+  serviceName: string;
+  spanName: string;
+  spanKind: SpanKind;
+  statusCode: SpanStatusCode;
+  attributes?: AttributeMeta[];
+  spanCount: number;
+  scrapeCount: number;
+  lastSeenAt: string;
+  firstSeenAt: string;
+}
+
+export type LogKind = "event" | "log";
+
+export interface SeverityCount {
+  severity: SeverityRange;
   count: number;
+}
+
+export interface LogEntry {
+  serviceName: string;
+  scopeName: string;
+  eventName?: string;
+  logKind: LogKind;
+  severityCounts: SeverityCount[];
+  attributes?: AttributeMeta[];
+  recordCount: number;
+  scrapeCount: number;
+  lastSeenAt: string;
+  firstSeenAt: string;
+}
+
+export interface TapCatalogResponse {
+  metrics: MetricEntry[];
+  spans: SpanEntry[];
+  logs: LogEntry[];
+  count: number;
+  spanCount: number;
+  logCount: number;
   rateChanged: boolean;
 }
 
 // Filter analysis types
 
-export type MatchOutcome = "kept" | "dropped" | "unknown";
+export type MatchOutcome = "kept" | "dropped" | "unknown" | "partial";
 
 export interface MatchResult {
   metricName: string;
   outcome: MatchOutcome;
   matchedBy?: string;
+  droppedRatio?: number;
 }
 
 export interface FilterAnalysis {
@@ -93,6 +161,7 @@ export interface FilterAnalysis {
   keptCount: number;
   droppedCount: number;
   unknownCount: number;
+  partialCount: number;
   hasUnsupported: boolean;
 }
 
@@ -133,6 +202,43 @@ export interface MetricsSnapshot {
   signals: Record<string, SignalMetrics>;
   exporters: Record<string, ExporterMetrics>;
   receivers: Record<string, ReceiverMetrics>;
+}
+
+// Alert coverage types
+
+export type AlertStatus =
+  | "safe"
+  | "at_risk"
+  | "broken"
+  | "would_activate"
+  | "unknown";
+
+export interface AlertMetricResult {
+  metricName: string;
+  filterOutcome: MatchOutcome;
+}
+
+export interface AlertCoverageResult {
+  alertName: string;
+  alertGroup: string;
+  expr: string;
+  metrics: AlertMetricResult[];
+  status: AlertStatus;
+}
+
+export interface CoverageSummary {
+  total: number;
+  safe: number;
+  atRisk: number;
+  broken: number;
+  wouldActivate: number;
+  unknown: number;
+}
+
+export interface CoverageReport {
+  results: AlertCoverageResult[];
+  summary: CoverageSummary;
+  rulesYaml?: string;
 }
 
 /** Extract the base type from a component name (e.g. "filter/info" → "filter"). */

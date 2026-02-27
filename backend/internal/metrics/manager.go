@@ -105,6 +105,11 @@ func (m *Manager) Snapshot() *ComputedSnapshot {
 	return ComputeSnapshot(m.store, string(status))
 }
 
+// ResetStore clears all stored metrics data without affecting the connection or scraper.
+func (m *Manager) ResetStore() {
+	m.store.Clear()
+}
+
 // Store returns the underlying store (for live rules).
 func (m *Manager) Store() *Store {
 	return m.store
