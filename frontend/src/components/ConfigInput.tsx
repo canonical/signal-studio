@@ -4,6 +4,7 @@ import type { editor as monacoEditor } from "monaco-editor";
 import type * as Monaco from "monaco-editor";
 import jsYaml from "js-yaml";
 import type { CoverageReport, AlertStatus } from "../types/api";
+import { findAlertRanges } from "../utils/findAlertRanges";
 
 const VANILLA_DARK_BG = "#262626";
 
@@ -61,27 +62,6 @@ const LINE_CLASS: Record<AlertStatus, string> = {
   unknown: "alert-line--unknown",
 };
 
-/** Parse alert rules YAML to find the full line range of each `- alert:` entry. */
-function findAlertRanges(text: string): { name: string; startLine: number; endLine: number }[] {
-  const results: { name: string; startLine: number; endLine: number }[] = [];
-  const lines = text.split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    const match = lines[i]?.match(/^(\s*)-\s*alert:\s*(.+?)\s*$/);
-    if (!match?.[2]) continue;
-    const indent = match[1]?.length ?? 0;
-    // Scan forward: entry continues while lines are empty or indented deeper.
-    let end = i;
-    for (let j = i + 1; j < lines.length; j++) {
-      const ln = lines[j] ?? "";
-      if (ln.trim() === "") { end = j; continue; }
-      const leadingSpaces = ln.search(/\S/);
-      if (leadingSpaces <= indent) break;
-      end = j;
-    }
-    results.push({ name: match[2], startLine: i + 1, endLine: end + 1 }); // 1-based
-  }
-  return results;
-}
 
 function prettyPrintYaml(raw: string): string | null {
   try {
