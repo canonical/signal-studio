@@ -10,7 +10,9 @@ import (
 )
 
 // NewRouter creates the HTTP handler with all routes.
-func NewRouter(mgr *metrics.Manager, tapMgr *tap.Manager) http.Handler {
+// If staticHandler is non-nil it is registered as the catch-all "/" route
+// to serve the embedded frontend SPA.
+func NewRouter(mgr *metrics.Manager, tapMgr *tap.Manager, staticHandler http.Handler) http.Handler {
 	mux := http.NewServeMux()
 
 	ah := &analyzeHandler{mgr: mgr, tapMgr: tapMgr}
@@ -41,6 +43,10 @@ func NewRouter(mgr *metrics.Manager, tapMgr *tap.Manager) http.Handler {
 	mux.HandleFunc("GET /api/tap/status", th.handleStatus)
 	mux.HandleFunc("GET /api/tap/catalog", th.handleCatalog)
 	mux.HandleFunc("POST /api/tap/reset", th.handleReset)
+
+	if staticHandler != nil {
+		mux.Handle("/", staticHandler)
+	}
 
 	return corsMiddleware(mux)
 }

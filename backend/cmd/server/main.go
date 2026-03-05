@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/canonical/signal-studio/internal/alertcoverage"
@@ -159,12 +162,35 @@ func runServe(args []string) {
 		}
 	}
 
-	router := api.NewRouter(mgr, tapMgr)
+	router := api.NewRouter(mgr, tapMgr, newStaticHandler())
 
-	log.Printf("signal-studio listening on :%s", port)
-	if err := http.ListenAndServe(fmt.Sprintf(":%s", port), router); err != nil {
-		log.Fatalf("server failed: %v", err)
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%s", port),
+		Handler: router,
 	}
+
+	// Start server in a goroutine.
+	go func() {
+		log.Printf("signal-studio listening on :%s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server failed: %v", err)
+		}
+	}()
+
+	// Block until SIGINT or SIGTERM.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+
+	log.Println("shutting down...")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP shutdown error: %v", err)
+	}
+	mgr.Disconnect()
+	tapMgr.Stop()
+	log.Println("shutdown complete")
 }
 
 // readInput reads YAML from a file path, explicit "-" for stdin, or auto-detected pipe.

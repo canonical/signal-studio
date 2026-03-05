@@ -1,0 +1,4 @@
+# Embedded frontend build output (populated by Docker / CI).
+# Keep .gitkeep so the directory exists for the go:embed directive.
+static/*
+!static/.gitkeep
