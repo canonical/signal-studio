@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test -coverprofile=coverage.out ./...
+
+      - name: Check coverage
+        run: |
+          total=$(go tool cover -func=coverage.out | grep ^total | awk '{print $3}' | tr -d '%')
+          echo "Total coverage: ${total}%"
+          if [ "$(echo "$total < 80" | bc)" -eq 1 ]; then
+            echo "::error::Coverage ${total}% is below 80% threshold"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check generated docs are up to date
+        run: |
+          go generate ./internal/rules/engine/
+          git diff --exit-code ../docs/ ../README.md || {
+            echo "::error::Generated docs are out of date. Run 'go generate ./internal/rules/engine/' and commit the result."
+            exit 1
+          }
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t signal-studio .

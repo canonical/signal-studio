@@ -1,67 +1,8 @@
 # Signal Studio
 
-A read-only diagnostic tool for OpenTelemetry Collector. Paste your Collector YAML config, connect to a live Prometheus metrics endpoint, and get actionable recommendations to reduce telemetry noise and improve pipeline health.
-
-## Features
-
-**Config Studio** -- Paste or upload your configuration and get:
-
-- Pipeline visualization (receivers, processors, exporters per pipeline)
-- Linting rules covering missing processors, ordering issues, security concerns, and misconfigurations
-- Copy-paste YAML snippets to fix each finding
-
-**Live Metrics** -- Connect to a Collector's metrics endpoint to see:
-
-- Per-pipeline throughput (in/out rates) overlaid on pipeline cards
-- Per-card component throughput (receiver accepted rates, exporter sent rates + queue utilization)
-- Live rules that detect drop rates, log volume dominance, queue saturation, and receiver-exporter mismatches
-
-**OTLP Sampling Tap** -- Enable with `TAP_ENABLED=true` to discover metric names and attributes flowing through your Collector:
-
-- Lightweight OTLP gRPC + HTTP receiver extracts metric metadata (names, types, attribute keys)
-- Add a fan-out exporter to your Collector config — the UI shows the exact YAML snippet to add
-- Metric catalog with TTL-based expiry, accumulates across the session
-- Attribute discovery: tracks sample values and cardinality at resource, scope, and datapoint levels
-- Expandable catalog rows show attribute keys, sample values, and high-cardinality warnings
-- Filter analysis: predicts which metrics would be kept/dropped by `filter` processors (legacy + OTTL syntax), including attribute-based expressions like `resource.attributes["service.name"] == "frontend"` and `HasAttrKeyOnDatapoint("http.method")`
-
-**Recommendations** -- All findings (static + live) appear in a unified panel sorted by severity, with evidence, explanations, impact estimates, and remediation snippets.
-
-## Static Rules
-
-| ID                              | Severity | Description                                      |
-| ------------------------------- | -------- | ------------------------------------------------ |
-| `missing-memory-limiter`        | critical | Pipeline has no `memory_limiter` processor       |
-| `memory-limiter-not-first`      | critical | `memory_limiter` is not the first processor      |
-| `memory-limiter-without-limits` | warning  | `memory_limiter` has no limit configured         |
-| `missing-batch`                 | warning  | Pipeline has no `batch` processor                |
-| `batch-before-sampling`         | warning  | Batch processor runs before sampling             |
-| `batch-not-near-end`            | warning  | Batch processor is not near the end of the chain |
-| `no-trace-sampling`             | warning  | Trace pipeline has no sampling configured        |
-| `no-log-severity-filter`        | info     | Log pipeline has no severity filtering           |
-| `filter-error-mode-propagate`   | warning  | Filter/transform uses `error_mode: propagate`    |
-| `receiver-endpoint-wildcard`    | warning  | Receiver binds to `0.0.0.0`                      |
-| `debug-exporter-in-pipeline`    | info     | Debug/logging exporter present                   |
-| `pprof-extension-enabled`       | info     | pprof extension is enabled                       |
-| `exporter-no-sending-queue`     | warning  | Network exporter has no sending queue            |
-| `exporter-no-retry`             | warning  | Network exporter has no retry on failure         |
-| `undefined-component-ref`       | critical | Pipeline references undefined component          |
-| `empty-pipeline`                | critical | Pipeline has no receivers or exporters           |
-| `unused-components`             | info     | Component defined but not used in any pipeline   |
-| `multiple-exporters-no-routing` | info     | Multiple exporters without a routing processor   |
-
-## Live Rules
-
-| ID                                | Severity | Condition                                                |
-| --------------------------------- | -------- | -------------------------------------------------------- |
-| `live-high-drop-rate`             | warning  | >10% drops sustained over 2+ intervals                   |
-| `live-log-volume-dominance`       | info     | Log ingest rate exceeds 3x trace rate                    |
-| `live-queue-near-capacity`        | warning  | Exporter queue >80% utilized, sustained                  |
-| `live-receiver-exporter-mismatch` | warning  | Accepted rate >2x sent rate, sustained over 3+ intervals |
+A diagnostic tool for OpenTelemetry Collector. Paste your Collector YAML, connect to a live Prometheus endpoint, or tap OTLP traffic — and get actionable recommendations to reduce telemetry noise and improve pipeline health.
 
 ## Quick Start
-
-### Docker
 
 ```sh
 docker build -t signal-studio .
@@ -70,7 +11,49 @@ docker run -p 8080:8080 signal-studio
 
 Open http://localhost:8080.
 
-### Local Development
+## Features
+
+### Config Analysis
+
+![config analysis showcase](assets/screenshot-1.png)
+
+Paste or upload your Collector YAML to get pipeline visualization, linting findings, and copy-paste remediation snippets. Covers missing processors, ordering issues, security concerns, and misconfigurations across a suite of static rules.
+
+### Live Metrics
+
+![live metrics showcase](assets/screenshot-3.png)
+
+Connect to a running Collector's Prometheus endpoint to see per-pipeline throughput, per-component rates, queue utilization, and live anomaly detection (high drop rates, queue saturation, receiver-exporter mismatches).
+
+### OTLP Sampling Tap
+
+![sampling tap showcase](assets/screenshot-2.png)
+
+Discover metric names and attributes flowing through your Collector by adding a fan-out exporter. The UI shows the exact YAML snippet to add. The tap builds a live catalog of metric metadata — names, types, attribute keys, sample values, and cardinality — and predicts which metrics your `filter` processors would keep or drop (legacy + OTTL syntax, including attribute-based expressions).
+
+Enabled by default; disable with `SIGNAL_STUDIO_TAP_DISABLED=true`.
+
+### Alert Coverage
+
+Paste Prometheus alerting rules to detect alerts that reference metrics your Collector would drop or fail to deliver. Supports both raw rule files and Kubernetes `PrometheusRule` CRDs.
+
+<!-- BEGIN GENERATED:config -->
+
+## Configuration
+
+| Variable                                | Default | Description                            |
+| --------------------------------------- | ------- | -------------------------------------- |
+| `SIGNAL_STUDIO_PORT`                    | `8080`  | HTTP server port                       |
+| `SIGNAL_STUDIO_SCRAPE_INTERVAL_SECONDS` | `10`    | Metrics polling interval (5–30)        |
+| `SIGNAL_STUDIO_MAX_YAML_SIZE_KB`        | `256`   | Maximum YAML body size                 |
+| `SIGNAL_STUDIO_CORS_ORIGINS`            | `*`     | Allowed CORS origins (comma-separated) |
+| `SIGNAL_STUDIO_TAP_DISABLED`            | `false` | Disable the OTLP sampling tap          |
+| `SIGNAL_STUDIO_TAP_GRPC_ADDR`           | `:5317` | gRPC listen address for the OTLP tap   |
+| `SIGNAL_STUDIO_TAP_HTTP_ADDR`           | `:5318` | HTTP listen address for the OTLP tap   |
+
+<!-- END GENERATED:config -->
+
+## Development
 
 **Backend** (Go 1.24+):
 
@@ -78,8 +61,6 @@ Open http://localhost:8080.
 cd backend
 go run ./cmd/server
 ```
-
-The API server starts on `:8080`.
 
 **Frontend** (Node 22+):
 
@@ -91,59 +72,9 @@ npm run dev
 
 Vite starts on `:5173` and proxies `/api` requests to the backend.
 
-## Configuration
+## Documentation
 
-Environment variables for the backend:
-
-| Variable                  | Default | Description                             |
-| ------------------------- | ------- | --------------------------------------- |
-| `PORT`                    | `8080`  | HTTP server port                        |
-| `SCRAPE_INTERVAL_SECONDS` | `10`    | Metrics polling interval (5-30)         |
-| `MAX_YAML_SIZE_KB`        | `256`   | Maximum YAML body size                  |
-| `CORS_ORIGINS`            | `*`     | Allowed CORS origins (comma-separated)  |
-| `TAP_ENABLED`             | `false` | Enable the OTLP sampling tap on startup |
-| `TAP_GRPC_ADDR`           | `:4317` | gRPC listen address for the OTLP tap    |
-| `TAP_HTTP_ADDR`           | `:4318` | HTTP listen address for the OTLP tap    |
-
-## API
-
-| Method | Path                      | Description                             |
-| ------ | ------------------------- | --------------------------------------- |
-| `POST` | `/api/config/analyze`     | Parse YAML and return config + findings |
-| `POST` | `/api/metrics/connect`    | Start scraping a Prometheus endpoint    |
-| `POST` | `/api/metrics/disconnect` | Stop scraping                           |
-| `GET`  | `/api/metrics/snapshot`   | Latest computed rates and queue data    |
-| `GET`  | `/api/metrics/status`     | Connection status                       |
-| `POST` | `/api/tap/start`          | Start OTLP sampling tap                 |
-| `POST` | `/api/tap/stop`           | Stop tap                                |
-| `GET`  | `/api/tap/status`         | Tap status + window timing              |
-| `GET`  | `/api/tap/catalog`        | Discovered metrics + attribute metadata |
-| `GET`  | `/api/health`             | Health check                            |
-
-## Project Structure
-
-```
-signal-studio/
-├── backend/
-│   ├── cmd/server/          # HTTP server entrypoint
-│   └── internal/
-│       ├── api/             # HTTP handlers + routing
-│       ├── config/          # YAML parser + data model
-│       ├── filter/          # Filter config parser, OTTL attr parser + matcher
-│       ├── metrics/         # Prometheus scraper + store
-│       ├── rules/           # Static and live rule engine
-│       └── tap/             # OTLP sampling tap + metric catalog
-├── frontend/
-│   └── src/
-│       ├── components/      # React components
-│       ├── hooks/           # Custom hooks
-│       └── types/           # TypeScript types mirroring backend
-├── docs/adr/                # Architecture decision records
-└── Dockerfile               # Multi-stage production build
-```
-
-## Tech Stack
-
-- **Backend**: Go, `gopkg.in/yaml.v3`, `github.com/prometheus/common/expfmt`
-- **Frontend**: React 19, TypeScript, Vanilla Framework (Canonical CSS), Monaco Editor, Vite
-- **Deployment**: Single container, stateless, in-memory only
+- [Rules reference](docs/rules.md) — full list of static, live, and catalog rules
+- [API reference](docs/api.md) — HTTP endpoints
+- [Architecture decisions](docs/adr/) — ADRs documenting design choices
+- [Generating docs](docs/generating-docs.md) — how to regenerate documentation from code

@@ -17,6 +17,6 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=backend-build /signal-studio ./signal-studio
-ENV PORT=8080
+ENV SIGNAL_STUDIO_PORT=8080
 EXPOSE 8080
 ENTRYPOINT ["./signal-studio"]

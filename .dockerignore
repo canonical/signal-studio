@@ -1,0 +1,14 @@
+.git/
+node_modules/
+frontend/dist/
+backend/tmp/
+backend/coverage.out
+*.coverprofile
+docs/
+.github/
+.idea/
+.vscode/
+*.md
+LICENSE
+CLAUDE.md
+.claude/

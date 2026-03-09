@@ -19,6 +19,12 @@ backend/coverage.out
 *.swo
 *~
 
+# Secrets / credentials
+.env*
+*.pem
+*.key
+*.crt
+
 # OS files
 .DS_Store
 Thumbs.db

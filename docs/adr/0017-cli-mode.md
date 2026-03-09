@@ -33,11 +33,13 @@ signal-studio serve                        # start HTTP server (current behavior
 ```
 
 **Pros:**
+
 - Single build artifact — simpler CI, Docker images, distribution
 - Follows established patterns (Docker, Terraform, OPA, Cobra-based tools)
 - Shared binary means shared dependencies — no version skew between CLI and server
 
 **Cons:**
+
 - CLI users pay for server dependencies (gRPC, pdata) in binary size even if they only run static analysis
 - Subcommand routing adds a small amount of complexity to `main.go`
 
@@ -46,10 +48,12 @@ signal-studio serve                        # start HTTP server (current behavior
 Two distinct `cmd/` entry points: `cmd/server/main.go` (existing) and `cmd/cli/main.go` (new). Produces `signal-studio-server` and `signal-studio`.
 
 **Pros:**
+
 - CLI binary can be much smaller (no gRPC, no pdata, no HTTP server dependencies)
 - Clearer separation of concerns
 
 **Cons:**
+
 - Two build artifacts to manage, version, and distribute
 - Docker images need to include both or choose one
 - Risk of version skew if packages diverge
@@ -59,11 +63,13 @@ Two distinct `cmd/` entry points: `cmd/server/main.go` (existing) and `cmd/cli/m
 A minimal CLI binary that only imports `config`, `rules/engine`, and output formatters. No tap, no metrics, no HTTP server.
 
 **Pros:**
+
 - Smallest possible binary (~5-8 MB estimated vs. ~21 MB for current server)
 - Fastest startup — no gRPC initialization
 - Could be distributed as a standalone download for CI
 
 **Cons:**
+
 - Same two-artifact management issues as Option B
 - Cannot leverage live rules or catalog rules even if data were piped in
 
@@ -131,10 +137,10 @@ signal-studio analyze config.yaml --rules-url http://mimir:9090
 
 ### Input Handling
 
-| Input | Behavior |
-|---|---|
-| `signal-studio analyze config.yaml` | Read file from path |
-| `signal-studio analyze -` | Read from stdin |
+| Input                                      | Behavior                                      |
+| ------------------------------------------ | --------------------------------------------- |
+| `signal-studio analyze config.yaml`        | Read file from path                           |
+| `signal-studio analyze -`                  | Read from stdin                               |
 | `cat config.yaml \| signal-studio analyze` | Auto-detect piped stdin when no path argument |
 
 Auto-detection in Go:
@@ -148,12 +154,12 @@ isPipe := (stat.Mode() & os.ModeCharDevice) == 0
 
 Four formats, selected via `--format` / `-f`:
 
-| Format | Flag value | Default when | Use case |
-|---|---|---|---|
-| Text | `text` | stdout is a TTY | Human reading in terminal |
-| JSON | `json` | stdout is piped | Machine consumption, scripting |
-| SARIF | `sarif` | never | GitHub Code Scanning, VS Code |
-| Markdown | `markdown` | never | PR comment bots |
+| Format   | Flag value | Default when    | Use case                       |
+| -------- | ---------- | --------------- | ------------------------------ |
+| Text     | `text`     | stdout is a TTY | Human reading in terminal      |
+| JSON     | `json`     | stdout is piped | Machine consumption, scripting |
+| SARIF    | `sarif`    | never           | GitHub Code Scanning, VS Code  |
+| Markdown | `markdown` | never           | PR comment bots                |
 
 JUnit XML was considered but deferred. The "rules as test cases" metaphor is a poor fit for a linter — a rule that didn't fire is not a "passing test." Exit codes handle CI pass/fail, SARIF handles inline annotations, and the remaining audience for JUnit rendering (Jenkins, GitLab) can consume JSON output instead. Add JUnit if there's explicit demand.
 
@@ -197,15 +203,15 @@ Reuse the existing `analyzeResponse` structure with a version field:
 
 SARIF v2.1.0 mapping:
 
-| Finding field | SARIF field |
-|---|---|
-| `RuleID` | `result.ruleId` + `tool.driver.rules[].id` |
-| `Title` | `tool.driver.rules[].shortDescription.text` |
-| `Severity` | `result.level` — `critical`→`error`, `warning`→`warning`, `info`→`note` |
-| `Implication` | `result.message.text` + `tool.driver.rules[].fullDescription.text` |
-| `Scope` | `result.locations[].logicalLocations[].name` |
-| `Confidence`, `Evidence` | `result.properties` (property bag) |
-| `Snippet` | `result.fixes[].description.text` (suggested fix) |
+| Finding field            | SARIF field                                                             |
+| ------------------------ | ----------------------------------------------------------------------- |
+| `RuleID`                 | `result.ruleId` + `tool.driver.rules[].id`                              |
+| `Title`                  | `tool.driver.rules[].shortDescription.text`                             |
+| `Severity`               | `result.level` — `critical`→`error`, `warning`→`warning`, `info`→`note` |
+| `Implication`            | `result.message.text` + `tool.driver.rules[].fullDescription.text`      |
+| `Scope`                  | `result.locations[].logicalLocations[].name`                            |
+| `Confidence`, `Evidence` | `result.properties` (property bag)                                      |
+| `Snippet`                | `result.fixes[].description.text` (suggested fix)                       |
 
 Use `owenrumney/go-sarif` (v3) for generation. Logical locations only for MVP — physical line numbers require enhancing the YAML parser to track node positions (future work).
 
@@ -227,10 +233,10 @@ Table format for PR comments:
 ```markdown
 ## Signal Studio Analysis
 
-| Severity | Rule | Finding | Scope |
-|---|---|---|---|
-| critical | missing-memory-limiter | No memory_limiter processor | pipeline:metrics/default |
-| warning | receiver-endpoint-wildcard | Receiver otlp binds to 0.0.0.0 | receiver:otlp |
+| Severity | Rule                       | Finding                        | Scope                    |
+| -------- | -------------------------- | ------------------------------ | ------------------------ |
+| critical | missing-memory-limiter     | No memory_limiter processor    | pipeline:metrics/default |
+| warning  | receiver-endpoint-wildcard | Receiver otlp binds to 0.0.0.0 | receiver:otlp            |
 
 **Summary:** 1 critical, 1 warning, 1 info
 ```
@@ -239,11 +245,11 @@ Table format for PR comments:
 
 Following the ESLint/yamllint/Ruff convention:
 
-| Code | Meaning |
-|---|---|
-| 0 | No findings above threshold |
-| 1 | Findings above threshold |
-| 2 | Tool error (invalid YAML, bad flags, I/O failure) |
+| Code | Meaning                                           |
+| ---- | ------------------------------------------------- |
+| 0    | No findings above threshold                       |
+| 1    | Findings above threshold                          |
+| 2    | Tool error (invalid YAML, bad flags, I/O failure) |
 
 Controlled by `--fail-on`:
 
@@ -337,12 +343,12 @@ If future use cases warrant it, the CLI could accept supplementary data files (m
 
 The following components involve significant logic and must each be documented in a dedicated markdown file under `docs/implementation/`. The implementation is not considered complete until all documentation files exist and accurately describe the component's design, behavior, edge cases, and testing strategy.
 
-| Component | Package | Documentation file | Description |
-|---|---|---|---|
-| SARIF formatter | `internal/report` | `docs/implementation/sarif-formatter.md` | SARIF v2.1.0 generation including field mapping, logical locations, property bags, and `go-sarif` library usage. Must cover the full mapping table and how findings translate to SARIF results. |
-| Subcommand routing and flag parsing | `cmd/server` | `docs/implementation/cli-subcommands.md` | `flag.NewFlagSet` per subcommand, stdin auto-detection, TTY-based format auto-detection, exit code logic, and the `--fail-on` / `--min-severity` interaction. |
+| Component                                | Package            | Documentation file                       | Description                                                                                                                                                                                      |
+| ---------------------------------------- | ------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| SARIF formatter                          | `internal/report`  | `docs/implementation/sarif-formatter.md` | SARIF v2.1.0 generation including field mapping, logical locations, property bags, and `go-sarif` library usage. Must cover the full mapping table and how findings translate to SARIF results.  |
+| Subcommand routing and flag parsing      | `cmd/server`       | `docs/implementation/cli-subcommands.md` | `flag.NewFlagSet` per subcommand, stdin auto-detection, TTY-based format auto-detection, exit code logic, and the `--fail-on` / `--min-severity` interaction.                                    |
 | Analysis extraction (`internal/analyze`) | `internal/analyze` | `docs/implementation/analyze-package.md` | The shared analysis entrypoint used by both CLI and HTTP handler. Must document how it composes config parsing, rule evaluation, filter analysis, and severity filtering into a single `Report`. |
-| Text formatter with ANSI color | `internal/report` | `docs/implementation/text-formatter.md` | TTY detection, ANSI color codes per severity, `--no-color` override, and summary line formatting. |
+| Text formatter with ANSI color           | `internal/report`  | `docs/implementation/text-formatter.md`  | TTY detection, ANSI color codes per severity, `--no-color` override, and summary line formatting.                                                                                                |
 
 ### Test Coverage Requirements
 
@@ -377,11 +383,15 @@ CLI mode unlocks CI/CD integration, which is the most requested capability for l
 
 ### Differentiation: Moderate
 
-OTelBin does not have a CLI. `otel-config-validator` (AWS) has a CLI but only validates syntax, not semantics. The combination of 27 static rules + filter analysis + SARIF output for GitHub Code Scanning is unique.
+- OTelBin does not have a CLI.
+- `otel-config-validator` (AWS) has a CLI but only validates syntax, not semantics.
+
+The combination of static rules + filter analysis + SARIF output for GitHub Code Scanning is unique.
 
 ### Effort: Low-Medium
 
 The analysis engine is already factored for reuse. The main work is:
+
 - Subcommand routing (~0.5 day)
 - `internal/analyze` extraction + refactor of `api/handlers.go` (~0.5 day)
 - Text formatter (~0.5 day)
@@ -396,6 +406,7 @@ Estimated total: **4 days**.
 ### Unlock Potential: Very High
 
 CLI mode is the prerequisite for:
+
 - Juju Doctor integration (backlog #7)
 - GitOps PR generation (backlog #9)
 - Shareable diagnostic reports (backlog #6)
