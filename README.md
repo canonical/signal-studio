@@ -61,6 +61,14 @@ Paste Prometheus alerting rules to detect alerts that reference metrics your Col
 
 ## Development
 
+To run the entire solution in one go
+
+```
+just dev
+```
+
+If you want to run the backend and frontend independently, instead do the following:
+
 **Backend** (Go 1.24+):
 
 ```sh
