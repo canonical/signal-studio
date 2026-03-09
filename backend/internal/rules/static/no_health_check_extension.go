@@ -10,6 +10,12 @@ type NoHealthCheckExtension struct{}
 
 func (r *NoHealthCheckExtension) ID() string { return "no-health-check-extension" }
 
+func (r *NoHealthCheckExtension) Description() string {
+	return "Configuration has no health_check extension"
+}
+
+func (r *NoHealthCheckExtension) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *NoHealthCheckExtension) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	for name := range cfg.Extensions {
 		if config.ComponentType(name) == "health_check" {

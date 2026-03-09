@@ -14,6 +14,12 @@ type NoLogSeverityFilter struct{}
 
 func (r *NoLogSeverityFilter) ID() string { return "no-log-severity-filter" }
 
+func (r *NoLogSeverityFilter) Description() string {
+	return "Logs pipeline has no severity filtering"
+}
+
+func (r *NoLogSeverityFilter) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *NoLogSeverityFilter) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	filterTypes := []string{"filter", "transform"}
 

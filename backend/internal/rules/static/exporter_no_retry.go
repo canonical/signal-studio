@@ -13,6 +13,12 @@ type ExporterNoRetry struct{}
 
 func (r *ExporterNoRetry) ID() string { return "exporter-no-retry" }
 
+func (r *ExporterNoRetry) Description() string {
+	return "Exporter has no retry_on_failure configured"
+}
+
+func (r *ExporterNoRetry) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *ExporterNoRetry) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, comp := range cfg.Exporters {

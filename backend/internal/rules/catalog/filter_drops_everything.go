@@ -16,6 +16,12 @@ type FilterDropsEverything struct{}
 
 func (r *FilterDropsEverything) ID() string { return "catalog-filter-drops-everything" }
 
+func (r *FilterDropsEverything) Description() string {
+	return "Filter processor drops all observed metrics"
+}
+
+func (r *FilterDropsEverything) DefaultSeverity() rules.Severity { return rules.SeverityCritical }
+
 func (r *FilterDropsEverything) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *FilterDropsEverything) EvaluateWithCatalog(

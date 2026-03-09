@@ -16,6 +16,10 @@ type HighDropRate struct{}
 
 func (r *HighDropRate) ID() string { return "live-high-drop-rate" }
 
+func (r *HighDropRate) Description() string { return "Sustained drop rate above 10% on any signal" }
+
+func (r *HighDropRate) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *HighDropRate) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *HighDropRate) EvaluateWithMetrics(cfg *config.CollectorConfig, store *metrics.Store) []rules.Finding {

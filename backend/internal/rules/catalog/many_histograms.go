@@ -16,6 +16,12 @@ type ManyHistograms struct{}
 
 func (r *ManyHistograms) ID() string { return "catalog-many-histograms" }
 
+func (r *ManyHistograms) Description() string {
+	return "Histogram metrics dominate the metric stream"
+}
+
+func (r *ManyHistograms) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *ManyHistograms) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *ManyHistograms) EvaluateWithCatalog(

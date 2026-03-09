@@ -15,6 +15,14 @@ func (r *TailSamplingWithoutMemoryLimiter) ID() string {
 	return "tail-sampling-without-memory-limiter"
 }
 
+func (r *TailSamplingWithoutMemoryLimiter) Description() string {
+	return "tail_sampling processor without memory_limiter in traces pipeline"
+}
+
+func (r *TailSamplingWithoutMemoryLimiter) DefaultSeverity() rules.Severity {
+	return rules.SeverityWarning
+}
+
 func (r *TailSamplingWithoutMemoryLimiter) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, p := range cfg.Pipelines {

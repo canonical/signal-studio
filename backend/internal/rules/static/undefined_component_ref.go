@@ -13,6 +13,12 @@ type UndefinedComponentRef struct{}
 
 func (r *UndefinedComponentRef) ID() string { return "undefined-component-ref" }
 
+func (r *UndefinedComponentRef) Description() string {
+	return "Pipeline references an undefined component"
+}
+
+func (r *UndefinedComponentRef) DefaultSeverity() rules.Severity { return rules.SeverityCritical }
+
 func (r *UndefinedComponentRef) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, p := range cfg.Pipelines {

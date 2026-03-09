@@ -14,6 +14,12 @@ type ConnectorLoop struct{}
 
 func (r *ConnectorLoop) ID() string { return "connector-loop" }
 
+func (r *ConnectorLoop) Description() string {
+	return "Connectors form a pipeline cycle causing infinite data circulation"
+}
+
+func (r *ConnectorLoop) DefaultSeverity() rules.Severity { return rules.SeverityCritical }
+
 func (r *ConnectorLoop) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	if len(cfg.Connectors) == 0 {
 		return nil

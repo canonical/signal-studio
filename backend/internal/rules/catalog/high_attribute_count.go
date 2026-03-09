@@ -17,6 +17,12 @@ type HighAttributeCount struct{}
 
 func (r *HighAttributeCount) ID() string { return "catalog-high-attribute-count" }
 
+func (r *HighAttributeCount) Description() string {
+	return "Metric has more than 10 attribute keys"
+}
+
+func (r *HighAttributeCount) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *HighAttributeCount) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *HighAttributeCount) EvaluateWithCatalog(

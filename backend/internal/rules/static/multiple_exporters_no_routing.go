@@ -14,6 +14,12 @@ type MultipleExportersNoRouting struct{}
 
 func (r *MultipleExportersNoRouting) ID() string { return "multiple-exporters-no-routing" }
 
+func (r *MultipleExportersNoRouting) Description() string {
+	return "Multiple exporters without a routing processor"
+}
+
+func (r *MultipleExportersNoRouting) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *MultipleExportersNoRouting) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, p := range cfg.Pipelines {

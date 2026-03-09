@@ -17,6 +17,12 @@ type ShortScrapeInterval struct{}
 
 func (r *ShortScrapeInterval) ID() string { return "catalog-short-scrape-interval" }
 
+func (r *ShortScrapeInterval) Description() string {
+	return "Receiver uses a sub-minute scrape or collection interval"
+}
+
+func (r *ShortScrapeInterval) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *ShortScrapeInterval) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *ShortScrapeInterval) EvaluateWithCatalog(

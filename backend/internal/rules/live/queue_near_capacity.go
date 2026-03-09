@@ -13,6 +13,10 @@ type QueueNearCapacity struct{}
 
 func (r *QueueNearCapacity) ID() string { return "live-queue-near-capacity" }
 
+func (r *QueueNearCapacity) Description() string { return "Exporter queue utilization exceeds 80%" }
+
+func (r *QueueNearCapacity) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *QueueNearCapacity) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *QueueNearCapacity) EvaluateWithMetrics(_ *config.CollectorConfig, store *metrics.Store) []rules.Finding {

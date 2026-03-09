@@ -14,6 +14,12 @@ type ExporterEndpointLocalhost struct{}
 
 func (r *ExporterEndpointLocalhost) ID() string { return "exporter-endpoint-localhost" }
 
+func (r *ExporterEndpointLocalhost) Description() string {
+	return "Network exporter points to a localhost endpoint"
+}
+
+func (r *ExporterEndpointLocalhost) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *ExporterEndpointLocalhost) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, comp := range cfg.Exporters {

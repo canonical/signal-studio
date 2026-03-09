@@ -19,6 +19,12 @@ type LoopDeviceMetrics struct{}
 
 func (r *LoopDeviceMetrics) ID() string { return "catalog-loop-device-metrics" }
 
+func (r *LoopDeviceMetrics) Description() string {
+	return "Loop device entries present in system.disk metrics"
+}
+
+func (r *LoopDeviceMetrics) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *LoopDeviceMetrics) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 var loopDevicePattern = regexp.MustCompile(`^loop\d+$`)

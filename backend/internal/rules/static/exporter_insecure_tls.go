@@ -13,6 +13,12 @@ type ExporterInsecureTLS struct{}
 
 func (r *ExporterInsecureTLS) ID() string { return "exporter-insecure-tls" }
 
+func (r *ExporterInsecureTLS) Description() string {
+	return "Exporter has TLS verification disabled"
+}
+
+func (r *ExporterInsecureTLS) DefaultSeverity() rules.Severity { return rules.SeverityCritical }
+
 func (r *ExporterInsecureTLS) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, comp := range cfg.Exporters {

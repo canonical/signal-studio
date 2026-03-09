@@ -13,6 +13,10 @@ type LogVolumeDominance struct{}
 
 func (r *LogVolumeDominance) ID() string { return "live-log-volume-dominance" }
 
+func (r *LogVolumeDominance) Description() string { return "Log ingest rate exceeds 3x trace ingest rate" }
+
+func (r *LogVolumeDominance) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *LogVolumeDominance) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *LogVolumeDominance) EvaluateWithMetrics(_ *config.CollectorConfig, store *metrics.Store) []rules.Finding {

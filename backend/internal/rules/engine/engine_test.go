@@ -295,5 +295,25 @@ func TestEvaluateWithCatalog_CatalogRuleFallsBackToEvaluate(t *testing.T) {
 	}
 }
 
+// TestRuleMetadata verifies every rule has non-empty Description and DefaultSeverity.
+func TestRuleMetadata(t *testing.T) {
+	engine := NewDefaultEngine()
+	seen := make(map[string]bool)
+	for _, r := range engine.Rules() {
+		if seen[r.ID()] {
+			t.Errorf("duplicate rule ID %q", r.ID())
+		}
+		seen[r.ID()] = true
+
+		if r.Description() == "" {
+			t.Errorf("rule %q has empty Description()", r.ID())
+		}
+		sev := r.DefaultSeverity()
+		if sev != rules.SeverityInfo && sev != rules.SeverityWarning && sev != rules.SeverityCritical {
+			t.Errorf("rule %q has invalid DefaultSeverity: %q", r.ID(), sev)
+		}
+	}
+}
+
 // Ensure unused imports are used.
 var _ = filter.OutcomeDropped

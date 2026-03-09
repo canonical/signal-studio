@@ -1,3 +1,5 @@
+//go:generate go run github.com/canonical/signal-studio/cmd/docgen -rules ../../../../docs/rules.md -api ../../../../docs/api.md -readme ../../../../README.md
+
 package engine
 
 import (
@@ -28,6 +30,11 @@ func NewDefaultEngine() *Engine {
 	all = append(all, live.AllRules()...)
 	all = append(all, catalog.AllRules()...)
 	return NewEngine(all...)
+}
+
+// Rules returns the engine's rule set.
+func (e *Engine) Rules() []rules.Rule {
+	return e.rules
 }
 
 // Evaluate runs all rules and returns the combined findings.

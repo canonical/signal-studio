@@ -13,6 +13,12 @@ type EmptyPipeline struct{}
 
 func (r *EmptyPipeline) ID() string { return "empty-pipeline" }
 
+func (r *EmptyPipeline) Description() string {
+	return "Pipeline has no receivers or exporters"
+}
+
+func (r *EmptyPipeline) DefaultSeverity() rules.Severity { return rules.SeverityCritical }
+
 func (r *EmptyPipeline) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, p := range cfg.Pipelines {

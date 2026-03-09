@@ -14,6 +14,12 @@ type NoTraceSampling struct{}
 
 func (r *NoTraceSampling) ID() string { return "no-trace-sampling" }
 
+func (r *NoTraceSampling) Description() string {
+	return "Traces pipeline has no sampling processor"
+}
+
+func (r *NoTraceSampling) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *NoTraceSampling) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	samplingProcessors := []string{
 		"probabilistic_sampler",

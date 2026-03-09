@@ -13,6 +13,12 @@ type MissingMemoryLimiter struct{}
 
 func (r *MissingMemoryLimiter) ID() string { return "missing-memory-limiter" }
 
+func (r *MissingMemoryLimiter) Description() string {
+	return "Pipeline has no memory_limiter processor"
+}
+
+func (r *MissingMemoryLimiter) DefaultSeverity() rules.Severity { return rules.SeverityCritical }
+
 func (r *MissingMemoryLimiter) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, p := range cfg.Pipelines {

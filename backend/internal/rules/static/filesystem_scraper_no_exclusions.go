@@ -15,6 +15,12 @@ type FilesystemScraperNoExclusions struct{}
 
 func (r *FilesystemScraperNoExclusions) ID() string { return "filesystem-scraper-no-exclusions" }
 
+func (r *FilesystemScraperNoExclusions) Description() string {
+	return "Filesystem scraper has no virtual filesystem exclusions"
+}
+
+func (r *FilesystemScraperNoExclusions) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *FilesystemScraperNoExclusions) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, recv := range cfg.Receivers {

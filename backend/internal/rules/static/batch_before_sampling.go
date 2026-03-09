@@ -14,6 +14,12 @@ type BatchBeforeSampling struct{}
 
 func (r *BatchBeforeSampling) ID() string { return "batch-before-sampling" }
 
+func (r *BatchBeforeSampling) Description() string {
+	return "Batch processor runs before a sampling processor"
+}
+
+func (r *BatchBeforeSampling) DefaultSeverity() rules.Severity { return rules.SeverityCritical }
+
 func (r *BatchBeforeSampling) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	samplers := map[string]bool{
 		"tail_sampling":         true,

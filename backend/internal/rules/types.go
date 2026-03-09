@@ -41,6 +41,8 @@ type Finding struct {
 // Rule evaluates a collector config and returns any findings.
 type Rule interface {
 	ID() string
+	Description() string
+	DefaultSeverity() Severity
 	Evaluate(cfg *config.CollectorConfig) []Finding
 }
 

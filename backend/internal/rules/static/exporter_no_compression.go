@@ -13,6 +13,12 @@ type ExporterNoCompression struct{}
 
 func (r *ExporterNoCompression) ID() string { return "exporter-no-compression" }
 
+func (r *ExporterNoCompression) Description() string {
+	return "OTLP exporter has no compression configured"
+}
+
+func (r *ExporterNoCompression) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *ExporterNoCompression) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, comp := range cfg.Exporters {

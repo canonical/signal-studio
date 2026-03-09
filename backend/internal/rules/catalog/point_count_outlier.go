@@ -16,6 +16,12 @@ type PointCountOutlier struct{}
 
 func (r *PointCountOutlier) ID() string { return "catalog-point-count-outlier" }
 
+func (r *PointCountOutlier) Description() string {
+	return "Metric point count is a statistical outlier"
+}
+
+func (r *PointCountOutlier) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *PointCountOutlier) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *PointCountOutlier) EvaluateWithCatalog(

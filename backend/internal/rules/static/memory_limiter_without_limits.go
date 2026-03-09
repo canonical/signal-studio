@@ -13,6 +13,12 @@ type MemoryLimiterWithoutLimits struct{}
 
 func (r *MemoryLimiterWithoutLimits) ID() string { return "memory-limiter-without-limits" }
 
+func (r *MemoryLimiterWithoutLimits) Description() string {
+	return "memory_limiter has no limit_mib or limit_percentage configured"
+}
+
+func (r *MemoryLimiterWithoutLimits) DefaultSeverity() rules.Severity { return rules.SeverityCritical }
+
 func (r *MemoryLimiterWithoutLimits) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, comp := range cfg.Processors {

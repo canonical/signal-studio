@@ -13,6 +13,14 @@ type FilterErrorModePropagateRule struct{}
 
 func (r *FilterErrorModePropagateRule) ID() string { return "filter-error-mode-propagate" }
 
+func (r *FilterErrorModePropagateRule) Description() string {
+	return "Filter or transform processor uses error_mode propagate"
+}
+
+func (r *FilterErrorModePropagateRule) DefaultSeverity() rules.Severity {
+	return rules.SeverityWarning
+}
+
 func (r *FilterErrorModePropagateRule) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	riskyTypes := map[string]bool{"filter": true, "transform": true}
 	var findings []rules.Finding

@@ -14,6 +14,12 @@ type ReceiverEndpointWildcard struct{}
 
 func (r *ReceiverEndpointWildcard) ID() string { return "receiver-endpoint-wildcard" }
 
+func (r *ReceiverEndpointWildcard) Description() string {
+	return "Receiver binds to 0.0.0.0 wildcard address"
+}
+
+func (r *ReceiverEndpointWildcard) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *ReceiverEndpointWildcard) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, comp := range cfg.Receivers {

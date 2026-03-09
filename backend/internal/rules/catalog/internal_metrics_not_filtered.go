@@ -20,6 +20,14 @@ func (r *InternalMetricsNotFiltered) ID() string {
 	return "catalog-internal-metrics-not-filtered"
 }
 
+func (r *InternalMetricsNotFiltered) Description() string {
+	return "Internal otelcol_* metrics are exported without filtering"
+}
+
+func (r *InternalMetricsNotFiltered) DefaultSeverity() rules.Severity {
+	return rules.SeverityWarning
+}
+
 func (r *InternalMetricsNotFiltered) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *InternalMetricsNotFiltered) EvaluateWithCatalog(

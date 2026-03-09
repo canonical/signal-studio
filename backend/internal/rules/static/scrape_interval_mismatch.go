@@ -16,6 +16,12 @@ type ScrapeIntervalMismatch struct{}
 
 func (r *ScrapeIntervalMismatch) ID() string { return "scrape-interval-mismatch" }
 
+func (r *ScrapeIntervalMismatch) Description() string {
+	return "Receivers in the same metrics pipeline use different scrape intervals"
+}
+
+func (r *ScrapeIntervalMismatch) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *ScrapeIntervalMismatch) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for pName, p := range cfg.Pipelines {

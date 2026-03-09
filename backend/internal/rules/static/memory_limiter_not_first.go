@@ -14,6 +14,12 @@ type MemoryLimiterNotFirst struct{}
 
 func (r *MemoryLimiterNotFirst) ID() string { return "memory-limiter-not-first" }
 
+func (r *MemoryLimiterNotFirst) Description() string {
+	return "memory_limiter is not the first processor in the pipeline"
+}
+
+func (r *MemoryLimiterNotFirst) DefaultSeverity() rules.Severity { return rules.SeverityCritical }
+
 func (r *MemoryLimiterNotFirst) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, p := range cfg.Pipelines {

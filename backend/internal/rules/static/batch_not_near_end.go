@@ -14,6 +14,12 @@ type BatchNotNearEnd struct{}
 
 func (r *BatchNotNearEnd) ID() string { return "batch-not-near-end" }
 
+func (r *BatchNotNearEnd) Description() string {
+	return "Batch processor is not near the end of the pipeline"
+}
+
+func (r *BatchNotNearEnd) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *BatchNotNearEnd) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, p := range cfg.Pipelines {

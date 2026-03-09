@@ -13,6 +13,10 @@ type PprofExtensionEnabled struct{}
 
 func (r *PprofExtensionEnabled) ID() string { return "pprof-extension-enabled" }
 
+func (r *PprofExtensionEnabled) Description() string { return "pprof extension is enabled" }
+
+func (r *PprofExtensionEnabled) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *PprofExtensionEnabled) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	for _, ext := range cfg.ServiceExtensions {
 		if config.ComponentType(ext) == "pprof" {

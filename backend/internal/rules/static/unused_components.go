@@ -13,6 +13,12 @@ type UnusedComponents struct{}
 
 func (r *UnusedComponents) ID() string { return "unused-components" }
 
+func (r *UnusedComponents) Description() string {
+	return "Component defined but not used in any pipeline"
+}
+
+func (r *UnusedComponents) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *UnusedComponents) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	usedReceivers := make(map[string]bool)
 	usedProcessors := make(map[string]bool)

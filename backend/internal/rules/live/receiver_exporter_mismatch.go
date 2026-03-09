@@ -15,6 +15,12 @@ type ReceiverExporterMismatch struct{}
 
 func (r *ReceiverExporterMismatch) ID() string { return "live-receiver-exporter-mismatch" }
 
+func (r *ReceiverExporterMismatch) Description() string {
+	return "Receiver accepted rate exceeds 2x exporter sent rate"
+}
+
+func (r *ReceiverExporterMismatch) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *ReceiverExporterMismatch) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *ReceiverExporterMismatch) EvaluateWithMetrics(cfg *config.CollectorConfig, store *metrics.Store) []rules.Finding {

@@ -14,6 +14,12 @@ type MissingBatch struct{}
 
 func (r *MissingBatch) ID() string { return "missing-batch" }
 
+func (r *MissingBatch) Description() string {
+	return "Pipeline has no batch processor"
+}
+
+func (r *MissingBatch) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *MissingBatch) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, p := range cfg.Pipelines {

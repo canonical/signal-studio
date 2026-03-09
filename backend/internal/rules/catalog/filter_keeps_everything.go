@@ -16,6 +16,12 @@ type FilterKeepsEverything struct{}
 
 func (r *FilterKeepsEverything) ID() string { return "catalog-filter-keeps-everything" }
 
+func (r *FilterKeepsEverything) Description() string {
+	return "Filter processor matches no metrics for dropping"
+}
+
+func (r *FilterKeepsEverything) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *FilterKeepsEverything) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *FilterKeepsEverything) EvaluateWithCatalog(

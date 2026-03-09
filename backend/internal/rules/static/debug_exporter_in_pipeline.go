@@ -13,6 +13,12 @@ type DebugExporterInPipeline struct{}
 
 func (r *DebugExporterInPipeline) ID() string { return "debug-exporter-in-pipeline" }
 
+func (r *DebugExporterInPipeline) Description() string {
+	return "Debug or logging exporter present in pipeline"
+}
+
+func (r *DebugExporterInPipeline) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *DebugExporterInPipeline) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	debugExporters := map[string]bool{"debug": true, "logging": true}
 	var findings []rules.Finding

@@ -13,6 +13,12 @@ type ExporterNoSendingQueue struct{}
 
 func (r *ExporterNoSendingQueue) ID() string { return "exporter-no-sending-queue" }
 
+func (r *ExporterNoSendingQueue) Description() string {
+	return "Network exporter has no sending queue configured"
+}
+
+func (r *ExporterNoSendingQueue) DefaultSeverity() rules.Severity { return rules.SeverityWarning }
+
 func (r *ExporterNoSendingQueue) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	var findings []rules.Finding
 	for name, comp := range cfg.Exporters {

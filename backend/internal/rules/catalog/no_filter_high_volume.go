@@ -16,6 +16,12 @@ type NoFilterHighVolume struct{}
 
 func (r *NoFilterHighVolume) ID() string { return "catalog-no-filter-high-volume" }
 
+func (r *NoFilterHighVolume) Description() string {
+	return "More than 50 metrics exported without a filter processor"
+}
+
+func (r *NoFilterHighVolume) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *NoFilterHighVolume) Evaluate(_ *config.CollectorConfig) []rules.Finding { return nil }
 
 func (r *NoFilterHighVolume) EvaluateWithCatalog(

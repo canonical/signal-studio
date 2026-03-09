@@ -14,6 +14,12 @@ type NoHealthCheckTraceFilter struct{}
 
 func (r *NoHealthCheckTraceFilter) ID() string { return "no-health-check-trace-filter" }
 
+func (r *NoHealthCheckTraceFilter) Description() string {
+	return "Traces pipeline has no filter dropping health check spans"
+}
+
+func (r *NoHealthCheckTraceFilter) DefaultSeverity() rules.Severity { return rules.SeverityInfo }
+
 func (r *NoHealthCheckTraceFilter) Evaluate(cfg *config.CollectorConfig) []rules.Finding {
 	healthPaths := []string{"/healthz", "/readyz", "/livez", "/health", "/ready"}
 
