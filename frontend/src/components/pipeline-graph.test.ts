@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rulesForRole } from "./PipelineGraph";
+import { rulesForRole } from "./pipeline-graph";
 
 describe("rulesForRole", () => {
   it("returns receiver rules including pipeline rules", () => {

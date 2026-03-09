@@ -4,7 +4,7 @@ import type { editor as monacoEditor } from "monaco-editor";
 import type * as Monaco from "monaco-editor";
 import jsYaml from "js-yaml";
 import type { CoverageReport, AlertStatus } from "../types/api";
-import { findAlertRanges } from "../utils/findAlertRanges";
+import { findAlertRanges } from "../utils/find-alert-ranges";
 
 const VANILLA_DARK_BG = "#262626";
 

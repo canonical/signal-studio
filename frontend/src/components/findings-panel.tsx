@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Confidence, Finding, Severity } from "../types/api";
-import { StatusIcon } from "./StatusIcon";
+import { StatusIcon } from "./status-icon";
 
 interface FindingsPanelProps {
   findings: Finding[];

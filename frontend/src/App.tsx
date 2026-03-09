@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnalyzeResponse, CoverageReport, Finding } from "./types/api";
-import { useDebounce } from "./hooks/useDebounce";
-import { useMetrics } from "./hooks/useMetrics";
-import { useTap } from "./hooks/useTap";
-import { ConfigInput, PLACEHOLDER } from "./components/ConfigInput";
-import { FindingsPanel } from "./components/FindingsPanel";
-import { MetricCatalogPanel } from "./components/MetricCatalogPanel";
-import { MetricsConnection } from "./components/MetricsConnection";
+import { useDebounce } from "./hooks/use-debounce";
+import { useMetrics } from "./hooks/use-metrics";
+import { useTap } from "./hooks/use-tap";
+import { ConfigInput, PLACEHOLDER } from "./components/config-input";
+import { FindingsPanel } from "./components/findings-panel";
+import { MetricCatalogPanel } from "./components/metric-catalog-panel";
+import { MetricsConnection } from "./components/metrics-connection";
 import {
   PipelineGraph,
   rulesForRole,
   type CardFilter,
-} from "./components/PipelineGraph";
-import { TapConnection } from "./components/TapConnection";
-import { Toast } from "./components/Toast";
-import { coverageToFindings } from "./utils/coverageToFindings";
+} from "./components/pipeline-graph";
+import { TapConnection } from "./components/tap-connection";
+import { Toast } from "./components/toast";
+import { coverageToFindings } from "./utils/coverage-to-findings";
 
 
 const DEBOUNCE_MS = 500;

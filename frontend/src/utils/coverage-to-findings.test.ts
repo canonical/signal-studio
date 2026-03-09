@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { coverageToFindings } from "./coverageToFindings";
+import { coverageToFindings } from "./coverage-to-findings";
 import type { CoverageReport } from "../types/api";
 
 function makeReport(

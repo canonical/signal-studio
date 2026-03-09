@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { findAlertRanges } from "./findAlertRanges";
+import { findAlertRanges } from "./find-alert-ranges";
 
 describe("findAlertRanges", () => {
   it("finds a single alert entry", () => {
