@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/canonical/signal-studio/internal/alertcoverage"
 	"github.com/canonical/signal-studio/internal/analyze"
 	"github.com/canonical/signal-studio/internal/rules"
 )
@@ -712,6 +713,103 @@ func TestSARIFFormatter_DuplicateRuleIDs(t *testing.T) {
 	results := run["results"].([]any)
 	if len(results) != 2 {
 		t.Errorf("expected 2 results, got %d", len(results))
+	}
+}
+
+// --- Text alert coverage ---
+
+func TestTextFormatter_WriteAlertCoverage(t *testing.T) {
+	rpt := &analyze.Report{
+		Findings: []rules.Finding{},
+		Summary:  analyze.Summary{},
+		AlertCoverage: &alertcoverage.CoverageReport{
+			Results: []alertcoverage.AlertCoverageResult{
+				{
+					AlertName:  "HighErrorRate",
+					AlertGroup: "slo",
+					Status:     alertcoverage.AlertSafe,
+					Metrics: []alertcoverage.AlertMetricResult{
+						{MetricName: "http_requests_total", FilterOutcome: "kept"},
+					},
+				},
+				{
+					AlertName:  "DiskFull",
+					AlertGroup: "infra",
+					Status:     alertcoverage.AlertBroken,
+					Metrics: []alertcoverage.AlertMetricResult{
+						{MetricName: "node_disk_bytes", FilterOutcome: "dropped"},
+					},
+				},
+				{
+					AlertName:  "MemoryHigh",
+					AlertGroup: "infra",
+					Status:     alertcoverage.AlertAtRisk,
+				},
+				{
+					AlertName:  "CPUIdle",
+					AlertGroup: "infra",
+					Status:     alertcoverage.AlertUnknown,
+				},
+				{
+					AlertName:  "NewMetric",
+					AlertGroup: "infra",
+					Status:     alertcoverage.AlertWouldActivate,
+				},
+			},
+			Summary: alertcoverage.CoverageSummary{
+				Total: 5, Safe: 1, AtRisk: 1, Broken: 1, WouldActivate: 1, Unknown: 1,
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	f := &TextFormatter{NoColor: true}
+	if err := f.Format(rpt, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+
+	if !strings.Contains(out, "ALERT COVERAGE") {
+		t.Error("expected ALERT COVERAGE header")
+	}
+	if !strings.Contains(out, "HighErrorRate [slo]") {
+		t.Error("expected alert name with group")
+	}
+	if !strings.Contains(out, "http_requests_total: kept") {
+		t.Error("expected metric detail line")
+	}
+	if !strings.Contains(out, "5 alerts") {
+		t.Error("expected summary line")
+	}
+}
+
+func TestTextFormatter_AlertStatusBadge(t *testing.T) {
+	f := &TextFormatter{}
+	// Without color — plain labels.
+	for _, status := range []alertcoverage.AlertStatus{
+		alertcoverage.AlertSafe,
+		alertcoverage.AlertBroken,
+		alertcoverage.AlertAtRisk,
+		alertcoverage.AlertWouldActivate,
+		alertcoverage.AlertUnknown,
+	} {
+		badge := f.alertStatusBadge(status, false)
+		if badge != strings.ToUpper(string(status)) {
+			t.Errorf("no-color badge for %q: got %q", status, badge)
+		}
+	}
+	// With color — should contain ANSI codes.
+	for _, status := range []alertcoverage.AlertStatus{
+		alertcoverage.AlertSafe,
+		alertcoverage.AlertBroken,
+		alertcoverage.AlertAtRisk,
+		alertcoverage.AlertWouldActivate,
+		alertcoverage.AlertUnknown,
+	} {
+		badge := f.alertStatusBadge(status, true)
+		if !strings.Contains(badge, "\033[") {
+			t.Errorf("color badge for %q should contain ANSI codes", status)
+		}
 	}
 }
 

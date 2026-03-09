@@ -915,3 +915,31 @@ func TestLoopDeviceMetrics_IgnoresNonLoopPatterns(t *testing.T) {
 		t.Fatalf("expected 0 findings for non-loop patterns, got %d", len(findings))
 	}
 }
+
+// --- AllRules and rule metadata ---
+
+func TestAllRules(t *testing.T) {
+	all := AllRules()
+	if len(all) != 9 {
+		t.Fatalf("expected 9 catalog rules, got %d", len(all))
+	}
+	seen := make(map[string]bool)
+	for _, r := range all {
+		if seen[r.ID()] {
+			t.Errorf("duplicate rule ID %q", r.ID())
+		}
+		seen[r.ID()] = true
+
+		if r.Description() == "" {
+			t.Errorf("rule %q has empty Description()", r.ID())
+		}
+		sev := r.DefaultSeverity()
+		if sev != rules.SeverityInfo && sev != rules.SeverityWarning && sev != rules.SeverityCritical {
+			t.Errorf("rule %q has invalid DefaultSeverity: %q", r.ID(), sev)
+		}
+		// CatalogRule.Evaluate() should return nil.
+		if findings := r.Evaluate(emptyCfg()); findings != nil {
+			t.Errorf("rule %q Evaluate() should return nil, got %v", r.ID(), findings)
+		}
+	}
+}
