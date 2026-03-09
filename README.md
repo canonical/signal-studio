@@ -44,19 +44,17 @@ Enabled by default; disable with `SIGNAL_STUDIO_TAP_DISABLED=true`.
 Paste Prometheus alerting rules to detect alerts that reference metrics your Collector would drop or fail to deliver. Supports both raw rule files and Kubernetes `PrometheusRule` CRDs.
 
 <!-- BEGIN GENERATED:config -->
-
 ## Configuration
 
-| Variable                                | Default | Description                            |
-| --------------------------------------- | ------- | -------------------------------------- |
-| `SIGNAL_STUDIO_PORT`                    | `8080`  | HTTP server port                       |
-| `SIGNAL_STUDIO_SCRAPE_INTERVAL_SECONDS` | `10`    | Metrics polling interval (5–30)        |
-| `SIGNAL_STUDIO_MAX_YAML_SIZE_KB`        | `256`   | Maximum YAML body size                 |
-| `SIGNAL_STUDIO_CORS_ORIGINS`            | `*`     | Allowed CORS origins (comma-separated) |
-| `SIGNAL_STUDIO_TAP_DISABLED`            | `false` | Disable the OTLP sampling tap          |
-| `SIGNAL_STUDIO_TAP_GRPC_ADDR`           | `:5317` | gRPC listen address for the OTLP tap   |
-| `SIGNAL_STUDIO_TAP_HTTP_ADDR`           | `:5318` | HTTP listen address for the OTLP tap   |
-
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `SIGNAL_STUDIO_PORT` | `8080` | HTTP server port |
+| `SIGNAL_STUDIO_SCRAPE_INTERVAL_SECONDS` | `10` | Metrics polling interval (5–30) |
+| `SIGNAL_STUDIO_MAX_YAML_SIZE_KB` | `256` | Maximum YAML body size |
+| `SIGNAL_STUDIO_CORS_ORIGINS` | `*` | Allowed CORS origins (comma-separated) |
+| `SIGNAL_STUDIO_TAP_DISABLED` | `false` | Disable the OTLP sampling tap |
+| `SIGNAL_STUDIO_TAP_GRPC_ADDR` | `:5317` | gRPC listen address for the OTLP tap |
+| `SIGNAL_STUDIO_TAP_HTTP_ADDR` | `:5318` | HTTP listen address for the OTLP tap |
 <!-- END GENERATED:config -->
 
 ## Development
