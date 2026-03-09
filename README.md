@@ -1,6 +1,12 @@
-# Signal Studio
+<div align="center">
+    <img src="assets/logo.png" width=500 />
+    <h1>Signal Studio</h1>
+    <p>
+        A diagnostic tool for OpenTelemetry Collector. Paste your Collector YAML, connect to a live Prometheus endpoint, or tap OTLP traffic. Get actionable recommendations to reduce telemetry noise and improve pipeline health.
+    </p>
+    <br/><br/>
+</div>
 
-A diagnostic tool for OpenTelemetry Collector. Paste your Collector YAML, connect to a live Prometheus endpoint, or tap OTLP traffic — and get actionable recommendations to reduce telemetry noise and improve pipeline health.
 
 ## Quick Start
 
