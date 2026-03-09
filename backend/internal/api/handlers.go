@@ -40,7 +40,7 @@ type analyzeHandler struct {
 
 func (h *analyzeHandler) handleAnalyzeConfig(w http.ResponseWriter, r *http.Request) {
 	maxSize := 256 // default KB
-	if v := os.Getenv("MAX_YAML_SIZE_KB"); v != "" {
+	if v := os.Getenv("SIGNAL_STUDIO_MAX_YAML_SIZE_KB"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			maxSize = n
 		}

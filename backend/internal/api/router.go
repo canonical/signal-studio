@@ -16,33 +16,43 @@ func NewRouter(mgr *metrics.Manager, tapMgr *tap.Manager, staticHandler http.Han
 	mux := http.NewServeMux()
 
 	ah := &analyzeHandler{mgr: mgr, tapMgr: tapMgr}
-	mux.HandleFunc("POST /api/config/analyze", ah.handleAnalyzeConfig)
-	mux.HandleFunc("GET /api/health", handleHealth)
-
 	mh := &metricsHandler{mgr: mgr}
-	mux.HandleFunc("POST /api/metrics/connect", mh.handleConnect)
-	mux.HandleFunc("POST /api/metrics/disconnect", mh.handleDisconnect)
-	mux.HandleFunc("GET /api/metrics/snapshot", mh.handleSnapshot)
-	mux.HandleFunc("GET /api/metrics/status", mh.handleStatus)
-	mux.HandleFunc("POST /api/metrics/reset", mh.handleReset)
+	ach := &alertCoverageHandler{tapMgr: tapMgr}
 
-	grpcAddr := os.Getenv("TAP_GRPC_ADDR")
+	grpcAddr := os.Getenv("SIGNAL_STUDIO_TAP_GRPC_ADDR")
 	if grpcAddr == "" {
 		grpcAddr = ":5317"
 	}
-	httpAddr := os.Getenv("TAP_HTTP_ADDR")
+	httpAddr := os.Getenv("SIGNAL_STUDIO_TAP_HTTP_ADDR")
 	if httpAddr == "" {
 		httpAddr = ":5318"
 	}
-	ach := &alertCoverageHandler{tapMgr: tapMgr}
-	mux.HandleFunc("POST /api/alert-coverage", ach.handleAlertCoverage)
-
 	th := &tapHandler{mgr: tapMgr, defaultGRPCAddr: grpcAddr, defaultHTTPAddr: httpAddr}
-	mux.HandleFunc("POST /api/tap/start", th.handleStart)
-	mux.HandleFunc("POST /api/tap/stop", th.handleStop)
-	mux.HandleFunc("GET /api/tap/status", th.handleStatus)
-	mux.HandleFunc("GET /api/tap/catalog", th.handleCatalog)
-	mux.HandleFunc("POST /api/tap/reset", th.handleReset)
+
+	handlers := map[string]http.HandlerFunc{
+		"POST /api/config/analyze":     ah.handleAnalyzeConfig,
+		"GET /api/health":              handleHealth,
+		"POST /api/metrics/connect":    mh.handleConnect,
+		"POST /api/metrics/disconnect": mh.handleDisconnect,
+		"GET /api/metrics/snapshot":    mh.handleSnapshot,
+		"GET /api/metrics/status":      mh.handleStatus,
+		"POST /api/metrics/reset":      mh.handleReset,
+		"POST /api/alert-coverage":     ach.handleAlertCoverage,
+		"POST /api/tap/start":          th.handleStart,
+		"POST /api/tap/stop":           th.handleStop,
+		"GET /api/tap/status":          th.handleStatus,
+		"GET /api/tap/catalog":         th.handleCatalog,
+		"POST /api/tap/reset":          th.handleReset,
+	}
+
+	for _, r := range Routes {
+		pattern := r.Method + " " + r.Path
+		h, ok := handlers[pattern]
+		if !ok {
+			panic("no handler registered for route: " + pattern)
+		}
+		mux.HandleFunc(pattern, h)
+	}
 
 	if staticHandler != nil {
 		mux.Handle("/", staticHandler)
@@ -52,7 +62,7 @@ func NewRouter(mgr *metrics.Manager, tapMgr *tap.Manager, staticHandler http.Han
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
-	origins := os.Getenv("CORS_ORIGINS")
+	origins := os.Getenv("SIGNAL_STUDIO_CORS_ORIGINS")
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
