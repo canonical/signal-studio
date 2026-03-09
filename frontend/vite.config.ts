@@ -8,7 +8,6 @@ export default defineConfig({
       scss: {
         quietDeps: true,
         silenceDeprecations: [
-          "mixed-decls",
           "color-functions",
           "global-builtin",
           "import",
