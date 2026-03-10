@@ -12,7 +12,6 @@ func AllRules() []rules.Rule {
 		&FilterDropsEverything{},
 		&NoFilterHighVolume{},
 		&ManyHistograms{},
-		&ShortScrapeInterval{},
 		&LoopDeviceMetrics{},
 	}
 }

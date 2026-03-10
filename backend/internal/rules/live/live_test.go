@@ -407,3 +407,273 @@ func TestReceiverExporterMismatchNoFire(t *testing.T) {
 		t.Errorf("expected no findings, got %d", len(findings))
 	}
 }
+
+// --- ExporterSustainedFailures ---
+
+func TestExporterSustainedFailures_Fires(t *testing.T) {
+	t0 := time.Now()
+	// 5 snapshots with increasing failure count for 4 intervals — sustained.
+	store := storeWithSnapshots(
+		makeSnapshot(t0, 0, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 10, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 100},
+		}),
+		makeSnapshot(t0, 20, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 200},
+		}),
+		makeSnapshot(t0, 30, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 300},
+		}),
+		makeSnapshot(t0, 40, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 400},
+		}),
+	)
+
+	rule := &ExporterSustainedFailures{}
+	findings := rule.EvaluateWithMetrics(&config.CollectorConfig{}, store)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != rules.SeverityCritical {
+		t.Errorf("expected critical severity, got %s", findings[0].Severity)
+	}
+}
+
+func TestExporterSustainedFailures_NoFire_TransientFailure(t *testing.T) {
+	t0 := time.Now()
+	// Failure in only 1 interval, not sustained.
+	store := storeWithSnapshots(
+		makeSnapshot(t0, 0, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 10, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 50},
+		}),
+		makeSnapshot(t0, 20, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 50},
+		}),
+		makeSnapshot(t0, 30, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 50},
+		}),
+	)
+
+	rule := &ExporterSustainedFailures{}
+	findings := rule.EvaluateWithMetrics(&config.CollectorConfig{}, store)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for transient failure, got %d", len(findings))
+	}
+}
+
+func TestExporterSustainedFailures_NoFire_InsufficientData(t *testing.T) {
+	t0 := time.Now()
+	store := storeWithSnapshots(
+		makeSnapshot(t0, 0, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 10, []metrics.MetricSample{
+			{Name: metrics.MetricExporterSendFailedSpans, Labels: map[string]string{"exporter": "otlp"}, Value: 100},
+		}),
+	)
+
+	rule := &ExporterSustainedFailures{}
+	findings := rule.EvaluateWithMetrics(&config.CollectorConfig{}, store)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with insufficient data, got %d", len(findings))
+	}
+}
+
+func TestExporterSustainedFailures_StaticReturnsNil(t *testing.T) {
+	rule := &ExporterSustainedFailures{}
+	if findings := rule.Evaluate(&config.CollectorConfig{}); findings != nil {
+		t.Error("Evaluate() should return nil")
+	}
+}
+
+// --- ReceiverBackpressure ---
+
+func TestReceiverBackpressure_Fires(t *testing.T) {
+	t0 := time.Now()
+	// Baseline of ~1000/s for first intervals, then drops to ~200/s.
+	store := storeWithSnapshots(
+		makeSnapshot(t0, 0, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 10, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 10000},
+		}),
+		makeSnapshot(t0, 20, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 20000},
+		}),
+		makeSnapshot(t0, 30, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 22000},
+		}),
+		makeSnapshot(t0, 40, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 24000},
+		}),
+	)
+
+	rule := &ReceiverBackpressure{}
+	findings := rule.EvaluateWithMetrics(&config.CollectorConfig{}, store)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != rules.SeverityWarning {
+		t.Errorf("expected warning severity, got %s", findings[0].Severity)
+	}
+}
+
+func TestReceiverBackpressure_NoFire_SteadyTraffic(t *testing.T) {
+	t0 := time.Now()
+	store := storeWithSnapshots(
+		makeSnapshot(t0, 0, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 10, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 10000},
+		}),
+		makeSnapshot(t0, 20, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 20000},
+		}),
+		makeSnapshot(t0, 30, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 30000},
+		}),
+		makeSnapshot(t0, 40, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 40000},
+		}),
+	)
+
+	rule := &ReceiverBackpressure{}
+	findings := rule.EvaluateWithMetrics(&config.CollectorConfig{}, store)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for steady traffic, got %d", len(findings))
+	}
+}
+
+func TestReceiverBackpressure_NoFire_LowTraffic(t *testing.T) {
+	t0 := time.Now()
+	// Even a big percentage drop doesn't fire if baseline is < 10/s.
+	store := storeWithSnapshots(
+		makeSnapshot(t0, 0, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 10, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 50},
+		}),
+		makeSnapshot(t0, 20, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 100},
+		}),
+		makeSnapshot(t0, 30, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 100},
+		}),
+		makeSnapshot(t0, 40, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 100},
+		}),
+	)
+
+	rule := &ReceiverBackpressure{}
+	findings := rule.EvaluateWithMetrics(&config.CollectorConfig{}, store)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for low traffic baseline, got %d", len(findings))
+	}
+}
+
+func TestReceiverBackpressure_StaticReturnsNil(t *testing.T) {
+	rule := &ReceiverBackpressure{}
+	if findings := rule.Evaluate(&config.CollectorConfig{}); findings != nil {
+		t.Error("Evaluate() should return nil")
+	}
+}
+
+// --- ZeroThroughput ---
+
+func TestZeroThroughput_Fires(t *testing.T) {
+	t0 := time.Now()
+	// 5 snapshots, all with zero values — 4 intervals of zero traffic.
+	store := storeWithSnapshots(
+		makeSnapshot(t0, 0, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+			{Name: metrics.MetricReceiverAcceptedLogRecords, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+			{Name: metrics.MetricReceiverAcceptedMetricPoints, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 10, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+			{Name: metrics.MetricReceiverAcceptedLogRecords, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+			{Name: metrics.MetricReceiverAcceptedMetricPoints, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 20, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+			{Name: metrics.MetricReceiverAcceptedLogRecords, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+			{Name: metrics.MetricReceiverAcceptedMetricPoints, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 30, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+			{Name: metrics.MetricReceiverAcceptedLogRecords, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+			{Name: metrics.MetricReceiverAcceptedMetricPoints, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 40, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+			{Name: metrics.MetricReceiverAcceptedLogRecords, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+			{Name: metrics.MetricReceiverAcceptedMetricPoints, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+	)
+
+	rule := &ZeroThroughput{}
+	findings := rule.EvaluateWithMetrics(&config.CollectorConfig{}, store)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != rules.SeverityWarning {
+		t.Errorf("expected warning severity, got %s", findings[0].Severity)
+	}
+}
+
+func TestZeroThroughput_NoFire_HasTraffic(t *testing.T) {
+	t0 := time.Now()
+	store := storeWithSnapshots(
+		makeSnapshot(t0, 0, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 10, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 100},
+		}),
+		makeSnapshot(t0, 20, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 200},
+		}),
+		makeSnapshot(t0, 30, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 300},
+		}),
+	)
+
+	rule := &ZeroThroughput{}
+	findings := rule.EvaluateWithMetrics(&config.CollectorConfig{}, store)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when traffic exists, got %d", len(findings))
+	}
+}
+
+func TestZeroThroughput_NoFire_InsufficientData(t *testing.T) {
+	t0 := time.Now()
+	store := storeWithSnapshots(
+		makeSnapshot(t0, 0, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+		makeSnapshot(t0, 10, []metrics.MetricSample{
+			{Name: metrics.MetricReceiverAcceptedSpans, Labels: map[string]string{"receiver": "otlp"}, Value: 0},
+		}),
+	)
+
+	rule := &ZeroThroughput{}
+	findings := rule.EvaluateWithMetrics(&config.CollectorConfig{}, store)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings with insufficient data, got %d", len(findings))
+	}
+}
+
+func TestZeroThroughput_StaticReturnsNil(t *testing.T) {
+	rule := &ZeroThroughput{}
+	if findings := rule.Evaluate(&config.CollectorConfig{}); findings != nil {
+		t.Error("Evaluate() should return nil")
+	}
+}

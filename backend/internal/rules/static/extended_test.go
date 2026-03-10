@@ -2173,3 +2173,645 @@ service:
 		t.Errorf("expected 0 findings when no scrapers configured, got %d", len(findings))
 	}
 }
+
+// --- ShortScrapeInterval (moved from catalog) ---
+
+func TestShortScrapeInterval_Prometheus_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: myapp
+          scrape_interval: 15s
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      exporters: [debug]
+`)
+	findings := (&ShortScrapeInterval{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].RuleID != "short-scrape-interval" {
+		t.Errorf("ruleId = %q", findings[0].RuleID)
+	}
+}
+
+func TestShortScrapeInterval_Prometheus_NoFire_60s(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: myapp
+          scrape_interval: 60s
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      exporters: [debug]
+`)
+	findings := (&ShortScrapeInterval{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for 60s interval, got %d", len(findings))
+	}
+}
+
+func TestShortScrapeInterval_HostMetrics_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  hostmetrics:
+    collection_interval: 10s
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      exporters: [debug]
+`)
+	findings := (&ShortScrapeInterval{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+}
+
+func TestShortScrapeInterval_HostMetrics_NoFire_2m(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  hostmetrics:
+    collection_interval: 2m
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      exporters: [debug]
+`)
+	findings := (&ShortScrapeInterval{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for 2m interval, got %d", len(findings))
+	}
+}
+
+func TestShortScrapeInterval_MultipleJobs(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: fast
+          scrape_interval: 5s
+        - job_name: normal
+          scrape_interval: 60s
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      exporters: [debug]
+`)
+	findings := (&ShortScrapeInterval{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding (only the fast job), got %d", len(findings))
+	}
+}
+
+func TestShortScrapeInterval_NoConfig(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  prometheus:
+exporters:
+  debug:
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      exporters: [debug]
+`)
+	findings := (&ShortScrapeInterval{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for nil config, got %d", len(findings))
+	}
+}
+
+// --- R28: ExporterTimeoutTooLow ---
+
+func TestExporterTimeoutTooLow_Fires_Default(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterTimeoutTooLow{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for default timeout, got %d", len(findings))
+	}
+	if findings[0].Scope != "exporter:otlp/backend" {
+		t.Errorf("expected scope exporter:otlp/backend, got %s", findings[0].Scope)
+	}
+}
+
+func TestExporterTimeoutTooLow_Fires_Explicit(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+    timeout: 3s
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterTimeoutTooLow{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for 3s timeout, got %d", len(findings))
+	}
+}
+
+func TestExporterTimeoutTooLow_Passes_HighTimeout(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+    timeout: 30s
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&ExporterTimeoutTooLow{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for 30s timeout, got %d", len(findings))
+	}
+}
+
+func TestExporterTimeoutTooLow_Skips_Localhost(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/local:
+    endpoint: localhost:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/local]
+`)
+	findings := (&ExporterTimeoutTooLow{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for localhost target, got %d", len(findings))
+	}
+}
+
+func TestExporterTimeoutTooLow_Skips_NonNetwork(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ExporterTimeoutTooLow{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for debug exporter, got %d", len(findings))
+	}
+}
+
+// --- R29: SendingQueueTooSmall ---
+
+func TestSendingQueueTooSmall_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+    sending_queue:
+      enabled: true
+      queue_size: 100
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&SendingQueueTooSmall{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for queue_size 100, got %d", len(findings))
+	}
+	if findings[0].Scope != "exporter:otlp/backend" {
+		t.Errorf("expected scope exporter:otlp/backend, got %s", findings[0].Scope)
+	}
+}
+
+func TestSendingQueueTooSmall_Passes_LargeQueue(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+    sending_queue:
+      enabled: true
+      queue_size: 5000
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&SendingQueueTooSmall{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for queue_size 5000, got %d", len(findings))
+	}
+}
+
+func TestSendingQueueTooSmall_Passes_DefaultQueue(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+    sending_queue:
+      enabled: true
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&SendingQueueTooSmall{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when queue_size not set (default), got %d", len(findings))
+	}
+}
+
+func TestSendingQueueTooSmall_Passes_QueueDisabled(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+    sending_queue:
+      enabled: false
+      queue_size: 50
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&SendingQueueTooSmall{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when queue disabled, got %d", len(findings))
+	}
+}
+
+// --- R30: NoSpanMetricsConnector ---
+
+func TestNoSpanMetricsConnector_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+    metrics:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&NoSpanMetricsConnector{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != rules.SeverityInfo {
+		t.Errorf("expected info severity, got %s", findings[0].Severity)
+	}
+}
+
+func TestNoSpanMetricsConnector_Passes_ConnectorExists(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+connectors:
+  spanmetrics:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+    metrics:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&NoSpanMetricsConnector{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when spanmetrics connector exists, got %d", len(findings))
+	}
+}
+
+func TestNoSpanMetricsConnector_Passes_TracesOnly(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&NoSpanMetricsConnector{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for traces-only config, got %d", len(findings))
+	}
+}
+
+func TestNoSpanMetricsConnector_Passes_MetricsOnly(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [otlp/backend]
+`)
+	findings := (&NoSpanMetricsConnector{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for metrics-only config, got %d", len(findings))
+	}
+}
+
+// --- R31: ExtensionEndpointExposed ---
+
+func TestExtensionEndpointExposed_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+extensions:
+  pprof:
+    endpoint: 0.0.0.0:1777
+  health_check:
+    endpoint: 0.0.0.0:13133
+service:
+  extensions: [pprof, health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ExtensionEndpointExposed{}).Evaluate(cfg)
+	if len(findings) != 2 {
+		t.Fatalf("expected 2 findings, got %d", len(findings))
+	}
+	for _, f := range findings {
+		if f.Severity != rules.SeverityWarning {
+			t.Errorf("expected warning severity, got %s", f.Severity)
+		}
+	}
+}
+
+func TestExtensionEndpointExposed_Passes_Localhost(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+extensions:
+  pprof:
+    endpoint: localhost:1777
+  health_check:
+    endpoint: 127.0.0.1:13133
+service:
+  extensions: [pprof, health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ExtensionEndpointExposed{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for localhost endpoints, got %d", len(findings))
+	}
+}
+
+func TestExtensionEndpointExposed_Skips_NonAdminExtension(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+extensions:
+  bearertoken:
+    endpoint: 0.0.0.0:8080
+service:
+  extensions: [bearertoken]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ExtensionEndpointExposed{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for non-admin extension, got %d", len(findings))
+	}
+}
+
+func TestExtensionEndpointExposed_Fires_IPv6Wildcard(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+extensions:
+  zpages:
+    endpoint: "[::]:55679"
+service:
+  extensions: [zpages]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ExtensionEndpointExposed{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for IPv6 wildcard, got %d", len(findings))
+	}
+}
+
+func TestExtensionEndpointExposed_Skips_NotInService(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+extensions:
+  pprof:
+    endpoint: 0.0.0.0:1777
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&ExtensionEndpointExposed{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings when extension not in service, got %d", len(findings))
+	}
+}
+
+// --- DebugLogFeedbackLoop ---
+
+func TestDebugLogFeedbackLoop_Fires(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+  filelog:
+    include:
+      - /var/log/*.log
+exporters:
+  debug:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    logs:
+      receivers: [otlp, filelog]
+      exporters: [debug, otlp/backend]
+`)
+	findings := (&DebugLogFeedbackLoop{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Severity != rules.SeverityCritical {
+		t.Errorf("expected critical severity, got %s", findings[0].Severity)
+	}
+	if findings[0].RuleID != "debug-log-feedback-loop" {
+		t.Errorf("expected rule ID debug-log-feedback-loop, got %s", findings[0].RuleID)
+	}
+}
+
+func TestDebugLogFeedbackLoop_Fires_Journald(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+  journald:
+exporters:
+  debug:
+service:
+  pipelines:
+    logs:
+      receivers: [otlp, journald]
+      exporters: [debug]
+`)
+	findings := (&DebugLogFeedbackLoop{}).Evaluate(cfg)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding for journald + debug, got %d", len(findings))
+	}
+}
+
+func TestDebugLogFeedbackLoop_NoFire_NoLogCollector(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+exporters:
+  debug:
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&DebugLogFeedbackLoop{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings without filelog/journald receiver, got %d", len(findings))
+	}
+}
+
+func TestDebugLogFeedbackLoop_NoFire_TracesPipeline(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+  filelog:
+    include:
+      - /var/log/*.log
+exporters:
+  debug:
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+`)
+	findings := (&DebugLogFeedbackLoop{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for debug in traces pipeline, got %d", len(findings))
+	}
+}
+
+func TestDebugLogFeedbackLoop_NoFire_NoDebugExporter(t *testing.T) {
+	cfg := mustParse(t, `
+receivers:
+  otlp:
+  filelog:
+    include:
+      - /var/log/*.log
+exporters:
+  otlp/backend:
+    endpoint: backend:4317
+service:
+  pipelines:
+    logs:
+      receivers: [otlp, filelog]
+      exporters: [otlp/backend]
+`)
+	findings := (&DebugLogFeedbackLoop{}).Evaluate(cfg)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings without debug exporter, got %d", len(findings))
+	}
+}

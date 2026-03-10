@@ -9,5 +9,8 @@ func AllRules() []rules.Rule {
 		&LogVolumeDominance{},
 		&QueueNearCapacity{},
 		&ReceiverExporterMismatch{},
+		&ExporterSustainedFailures{},
+		&ReceiverBackpressure{},
+		&ZeroThroughput{},
 	}
 }

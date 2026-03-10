@@ -34,5 +34,12 @@ func AllRules() []rules.Rule {
 		&ConnectorLoop{},
 		&NoHealthCheckTraceFilter{},
 		&FilesystemScraperNoExclusions{},
+		&ShortScrapeInterval{},
+		// Production safety & security rules (ADR-0020)
+		&ExporterTimeoutTooLow{},
+		&SendingQueueTooSmall{},
+		&NoSpanMetricsConnector{},
+		&ExtensionEndpointExposed{},
+		&DebugLogFeedbackLoop{},
 	}
 }
