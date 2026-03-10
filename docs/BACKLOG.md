@@ -10,6 +10,7 @@ Open research questions, feature ideas, and deferred work. When an item here mat
 - **Cross-signal correlation** — linking metrics, traces, and logs via shared resource attributes. Useful but unclear ROI for the diagnostic use case. (ADR-0013)
 - **expr-lang for user-defined rules** — hybrid approach where users can write custom rules in a safe expression language. (ADR-0004)
 - **SSE for live metrics** — Server-Sent Events instead of polling. Simpler client code, but polling works fine for current scale. (ADR-0005)
+- **`use_internal_logger` in debug-log-feedback-loop rule** — when the debug exporter sets `use_internal_logger: true`, output goes through zap to stderr instead of stdout. Both paths are still captured by journald, and filelog can watch either. Investigate whether there are edge cases where this setting meaningfully changes the feedback loop risk, and whether it should affect confidence or be mentioned in the finding. (ADR-0020)
 
 ## Features
 

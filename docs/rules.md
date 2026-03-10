@@ -35,6 +35,12 @@ Evaluated against your Collector YAML configuration.
 | `connector-loop` | critical | Connectors form a pipeline cycle causing infinite data circulation |
 | `no-health-check-trace-filter` | info | Traces pipeline has no filter dropping health check spans |
 | `filesystem-scraper-no-exclusions` | info | Filesystem scraper has no virtual filesystem exclusions |
+| `short-scrape-interval` | info | Receiver uses a sub-minute scrape or collection interval |
+| `exporter-timeout-too-low` | info | OTLP exporter timeout is below 10 seconds |
+| `sending-queue-too-small` | info | Exporter sending queue is explicitly set below 500 |
+| `no-span-metrics-connector` | info | Traces and metrics pipelines exist but no spanmetrics connector is configured |
+| `extension-endpoint-exposed` | warning | Admin extension endpoint is bound to a wildcard address |
+| `debug-log-feedback-loop` | critical | Debug exporter in logs pipeline risks infinite feedback via log collection |
 
 ## Live Rules
 
@@ -46,6 +52,9 @@ Evaluated in real time against Prometheus metrics scraped from a running Collect
 | `live-log-volume-dominance` | info | Log ingest rate exceeds 3x trace ingest rate |
 | `live-queue-near-capacity` | warning | Exporter queue utilization exceeds 80% |
 | `live-receiver-exporter-mismatch` | warning | Receiver accepted rate exceeds 2x exporter sent rate |
+| `live-exporter-sustained-failures` | critical | Exporter is experiencing sustained send failures |
+| `live-receiver-backpressure` | warning | Receiver accepted rate dropped sharply, indicating backpressure |
+| `live-zero-throughput` | warning | No data flowing through any receiver for multiple intervals |
 
 ## Catalog Rules
 
@@ -60,7 +69,6 @@ Evaluated against metrics discovered through the OTLP sampling tap.
 | `catalog-filter-drops-everything` | critical | Filter processor drops all observed metrics |
 | `catalog-no-filter-high-volume` | info | More than 50 metrics exported without a filter processor |
 | `catalog-many-histograms` | info | Histogram metrics dominate the metric stream |
-| `catalog-short-scrape-interval` | info | Receiver uses a sub-minute scrape or collection interval |
 | `catalog-loop-device-metrics` | info | Loop device entries present in system.disk metrics |
 
 ## Alert Coverage
