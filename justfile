@@ -30,3 +30,8 @@ build:
 # Type-check frontend
 typecheck:
     cd frontend && npx tsc --noEmit
+
+# Lint backend and frontend
+lint:
+    cd backend && go vet ./...
+    cd frontend && npx tsc --noEmit
