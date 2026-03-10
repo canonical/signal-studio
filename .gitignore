@@ -8,6 +8,7 @@ backend/tmp/
 # Test/coverage artifacts
 backend/coverage.out
 *.coverprofile
+cover.out
 
 # TypeScript build info
 *.tsbuildinfo
