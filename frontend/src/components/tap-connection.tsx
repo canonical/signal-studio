@@ -331,7 +331,7 @@ export function TapConnection({
                   >
                     <ToggleIcon active={rtActive} />
                   </button>
-                  {rtActive ? remotetap.addr : "Remote tap"}
+                  Remote tap
                 </div>
 
                 <div className="metrics-popout__label-row">
