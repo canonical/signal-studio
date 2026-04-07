@@ -351,6 +351,13 @@ export function TapConnection({
                   }}
                 />
 
+                {!rtActive && !remotetap.error && (
+                  <p className="tap-popout__hint">
+                    Enter a remotetapprocessor endpoint and toggle to stream
+                    signals directly from your Collector.
+                  </p>
+                )}
+
                 {remotetap.error && (
                   <p className="tap-popout__error">{remotetap.error}</p>
                 )}
