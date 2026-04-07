@@ -10,13 +10,13 @@ Signal Studio currently supports a **passive OTLP tap**: the collector is config
 telemetry to Signal Studio's gRPC/HTTP ingest endpoint (`/v1/metrics`, `/v1/traces`, `/v1/logs`).
 This works well but requires modifying the collector config.
 
-Users running a collector on Kubernetes with the `remotetapprocessor` already configured want
+Users running a collector on Kubernetes with the `remotetap processor` already configured want
 to stream telemetry directly into Signal Studio without:
 
 1. Reconfiguring the k8s collector, or
 2. Running a local OTel Collector bridge process.
 
-The `remotetapprocessor` (from `opentelemetry-collector-contrib`) exposes a **WebSocket server**
+The `remotetap processor` (from `opentelemetry-collector-contrib`) exposes a **WebSocket server**
 (default port `12001`) that streams OTLP JSON payloads for metrics, traces, and logs to any
 connected client. Each WebSocket message is a full JSON-encoded OTLP export request — either
 `{"resourceMetrics":[...]}`, `{"resourceSpans":[...]}`, or `{"resourceLogs":[...]}`.

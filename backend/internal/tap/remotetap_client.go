@@ -24,7 +24,7 @@ const (
 	RemoteTapStatusError      RemoteTapStatus = "error"
 )
 
-// remoteTapClient connects to a remotetapprocessor WebSocket endpoint and feeds
+// remoteTapClient connects to a remotetap processor WebSocket endpoint and feeds
 // received telemetry into the shared catalogs.
 type remoteTapClient struct {
 	mu          sync.RWMutex

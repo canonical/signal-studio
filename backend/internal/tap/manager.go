@@ -156,7 +156,7 @@ func (m *Manager) LogCatalog() *LogCatalog {
 	return m.logCatalog
 }
 
-// ConnectRemoteTap starts an outbound WebSocket connection to a remotetapprocessor
+// ConnectRemoteTap starts an outbound WebSocket connection to a remotetap processor
 // endpoint and feeds received telemetry into the shared catalogs.
 func (m *Manager) ConnectRemoteTap(addr string) error {
 	if m.disabled {
