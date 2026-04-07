@@ -30,4 +30,6 @@ var Routes = []Route{
 	{Method: "GET", Path: "/api/tap/status", Description: "Tap status + window timing", Section: "OTLP Sampling Tap"},
 	{Method: "GET", Path: "/api/tap/catalog", Description: "Discovered metrics + attribute metadata", Section: "OTLP Sampling Tap"},
 	{Method: "POST", Path: "/api/tap/reset", Description: "Reset tap catalog", Section: "OTLP Sampling Tap"},
+	{Method: "POST", Path: "/api/tap/remotetap/connect", Description: "Connect to a remotetapprocessor WebSocket stream", Section: "OTLP Sampling Tap"},
+	{Method: "POST", Path: "/api/tap/remotetap/disconnect", Description: "Disconnect from remotetap stream", Section: "OTLP Sampling Tap"},
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/canonical/signal-studio/internal/metrics"
 	"github.com/canonical/signal-studio/internal/tap"
+	"github.com/gorilla/websocket"
 )
 
 func tapRouter(t *testing.T, tapMgr *tap.Manager) http.Handler {
@@ -144,5 +145,80 @@ func TestTapStatusDisabled(t *testing.T) {
 	json.NewDecoder(w.Body).Decode(&body)
 	if body["disabled"] != true {
 		t.Errorf("disabled = %v, want true", body["disabled"])
+	}
+}
+
+func TestTapStatusIncludesRemoteTap(t *testing.T) {
+	tapMgr := tap.NewManager(false)
+	router := tapRouter(t, tapMgr)
+
+	req := httptest.NewRequest("GET", "/api/tap/status", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	var body map[string]any
+	json.NewDecoder(w.Body).Decode(&body)
+
+	rt, ok := body["remotetap"].(map[string]any)
+	if !ok {
+		t.Fatalf("remotetap field missing or wrong type: %v", body["remotetap"])
+	}
+	if rt["status"] != "idle" {
+		t.Errorf("remotetap.status = %v, want idle", rt["status"])
+	}
+}
+
+func TestRemoteTapHandlerConnectMissingAddr(t *testing.T) {
+	tapMgr := tap.NewManager(false)
+	router := tapRouter(t, tapMgr)
+
+	req := httptest.NewRequest("POST", "/api/tap/remotetap/connect", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestRemoteTapHandlerConnectAndDisconnect(t *testing.T) {
+	// Start a minimal WebSocket server.
+	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer ts.Close()
+
+	addr := strings.TrimPrefix(ts.URL, "http://")
+
+	tapMgr := tap.NewManager(false)
+	router := tapRouter(t, tapMgr)
+
+	body, _ := json.Marshal(map[string]string{"addr": addr})
+	req := httptest.NewRequest("POST", "/api/tap/remotetap/connect", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("connect status = %d; body: %s", w.Code, w.Body.String())
+	}
+
+	req = httptest.NewRequest("POST", "/api/tap/remotetap/disconnect", nil)
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("disconnect status = %d", w.Code)
 	}
 }

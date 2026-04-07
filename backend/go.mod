@@ -14,6 +14,7 @@ require (
 
 require (
 	github.com/VictoriaMetrics/metrics v1.35.3 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/go-version v1.8.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kr/text v0.2.0 // indirect
