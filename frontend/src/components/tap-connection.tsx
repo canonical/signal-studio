@@ -317,48 +317,44 @@ export function TapConnection({
 
           <hr className="tap-popout__divider" />
 
-          <div className="tap-popout__section-label">Remote tap</div>
+          {(() => {
+            const rtActive = remotetap.status === "connected" || remotetap.status === "connecting";
+            return (
+              <>
+                <div className="tap-popout__status">
+                  <button
+                    className="tap-popout__toggle-btn"
+                    type="button"
+                    title={rtActive ? "Disconnect remote tap" : "Connect to remote tap"}
+                    disabled={!rtActive && !remoteTapAddr.trim()}
+                    onClick={rtActive ? onRemoteTapDisconnect : () => onRemoteTapConnect(remoteTapAddr.trim())}
+                  >
+                    <ToggleIcon active={rtActive} />
+                  </button>
+                  {rtActive ? remotetap.addr : "Remote tap"}
+                </div>
 
-          {remotetap.status === "idle" || remotetap.status === "error" ? (
-            <div className="tap-popout__remotetap-form">
-              <input
-                className="tap-popout__remotetap-input"
-                type="text"
-                placeholder="host:port (e.g. localhost:12001)"
-                value={remoteTapAddr}
-                onChange={(e) => setRemoteTapAddr(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && remoteTapAddr.trim()) {
-                    onRemoteTapConnect(remoteTapAddr.trim());
-                  }
-                }}
-              />
-              <button
-                className="tap-popout__remotetap-btn"
-                type="button"
-                disabled={!remoteTapAddr.trim()}
-                onClick={() => onRemoteTapConnect(remoteTapAddr.trim())}
-              >
-                Connect
-              </button>
-            </div>
-          ) : (
-            <div className="tap-popout__remotetap-status">
-              <span className={`tap-popout__dot tap-popout__dot--${remotetap.status === "connected" ? "listening" : "connecting"}`} />
-              <span className="tap-popout__remotetap-addr">{remotetap.addr}</span>
-              <button
-                className="tap-popout__remotetap-disconnect"
-                type="button"
-                onClick={onRemoteTapDisconnect}
-              >
-                Disconnect
-              </button>
-            </div>
-          )}
+                {!rtActive && (
+                  <input
+                    className="tap-popout__remotetap-input"
+                    type="text"
+                    placeholder="host:port (e.g. localhost:12001)"
+                    value={remoteTapAddr}
+                    onChange={(e) => setRemoteTapAddr(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && remoteTapAddr.trim()) {
+                        onRemoteTapConnect(remoteTapAddr.trim());
+                      }
+                    }}
+                  />
+                )}
 
-          {remotetap.error && (
-            <p className="tap-popout__error">{remotetap.error}</p>
-          )}
+                {remotetap.error && (
+                  <p className="tap-popout__error">{remotetap.error}</p>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

@@ -241,7 +241,7 @@ export default function App() {
                 spanEntries={tap.spanEntries}
                 logEntries={tap.logEntries}
                 filterAnalyses={result?.filterAnalyses}
-                tapStatus={tap.status}
+                tapActive={tap.status === "listening" || tap.remotetap.status === "connected"}
               />
             </div>
           </div>
