@@ -1,41 +1,135 @@
-# 0021 — Remote Tap Client
+# ADR-0021: Remote Tap Client — Connect to remotetap processor
 
-## Status
+**Status:** Proposed
+**Date:** 2026-04-07
+**Related:** [ADR-0006: Metric Name Discovery and Filter Analysis](0006-metric-name-discovery-and-filter-analysis.md), [ADR-0012: UI-Controlled Tap](0012-ui-controlled-tap.md), [ADR-0013: Multi-Signal Tap](0013-multi-signal-tap.md)
 
-Accepted
+---
 
 ## Context
 
-Signal Studio currently supports a **passive OTLP tap**: the collector is configured to push
-telemetry to Signal Studio's gRPC/HTTP ingest endpoint (`/v1/metrics`, `/v1/traces`, `/v1/logs`).
-This works well but requires modifying the collector config.
+Signal Studio's OTLP sampling tap (ADR-0006, ADR-0012) is a **passive receiver**: the user must configure the Collector to push telemetry to Signal Studio's gRPC/HTTP ingest endpoint (`/v1/metrics`, `/v1/traces`, `/v1/logs`). This works well when Signal Studio runs alongside the Collector, but breaks down in a common deployment topology:
 
-Users running a collector on Kubernetes with the `remotetap processor` already configured want
-to stream telemetry directly into Signal Studio without:
+- Signal Studio runs locally on the developer's machine (or in Docker).
+- The Collector runs on Kubernetes, managed by a platform team.
+- Modifying the Collector config to add a fan-out OTLP exporter requires a config change, a review cycle, and (often) elevated permissions the user may not have.
 
-1. Reconfiguring the k8s collector, or
-2. Running a local OTel Collector bridge process.
+The `remotetap processor` from `opentelemetry-collector-contrib` is already present in many production Collectors as a debugging aid. It exposes a **WebSocket server** (default port `12001`) that streams OTLP JSON payloads for all three signal types to any connected client. Each WebSocket message is a complete OTLP export request encoded as JSON — `{"resourceMetrics":[...]}`, `{"resourceSpans":[...]}`, or `{"resourceLogs":[...]}`.
 
-The `remotetap processor` (from `opentelemetry-collector-contrib`) exposes a **WebSocket server**
-(default port `12001`) that streams OTLP JSON payloads for metrics, traces, and logs to any
-connected client. Each WebSocket message is a full JSON-encoded OTLP export request — either
-`{"resourceMetrics":[...]}`, `{"resourceSpans":[...]}`, or `{"resourceLogs":[...]}`.
+If Signal Studio could act as a WebSocket client, it could consume the tap stream without any Collector reconfiguration.
 
-## Decision
+---
 
-Add an active **remotetap client** to Signal Studio's backend that:
+## Problem Breakdown
 
-- Accepts a WebSocket endpoint address from the user via a new UI section in the tap popout.
-- Connects outbound to `ws://<addr>` (normalising bare `host:port` inputs automatically).
-- Reads the streaming OTLP JSON messages in a background goroutine.
-- Detects signal type by inspecting the top-level JSON key (`resourceMetrics` / `resourceSpans`
-  / `resourceLogs`) and unmarshals with the appropriate `pdata` JSON unmarshaler.
-- Feeds the data into the **same metric, span, and log catalogs** as the existing passive tap, so
-  no additional catalog display logic is needed.
-- Shuts down cleanly on context cancellation (the WebSocket connection is closed, which causes
-  the blocking `ReadMessage` to return).
+### Topology mismatch
 
-Two new API endpoints are added:
+The passive tap requires inbound connectivity: the Collector must be able to reach Signal Studio's ports. When the Collector is on Kubernetes and Signal Studio is local, the only realistic paths are:
+
+1. `kubectl port-forward` the Collector's OTLP port, then run a local Collector bridge that forwards from the remotetap processor stream to Signal Studio's ingest endpoint.
+2. Configure a fan-out OTLP exporter in the Collector — requires write access to the Collector config.
+
+Both options introduce friction. Option 1 requires running a separate process. Option 2 requires a config change the user may not be able to make.
+
+### Existing catalog infrastructure is reusable
+
+Signal Studio already maintains three in-memory catalogs (`Catalog`, `SpanCatalog`, `LogCatalog`) that the passive tap populates. If a remotetap client can feed the same catalogs, the entire downstream stack — the catalog API, the `MetricCatalogPanel`, catalog-based rules, and filter analysis — works unchanged.
+
+### Protocol is simple and already partially supported
+
+The remotetap processor marshals OTLP data using the same `pdata` JSON marshalers already used in Signal Studio's HTTP tap handlers. The signal type is identifiable from the top-level JSON key. No new deserialization code is needed beyond detecting which unmarshaler to invoke.
+
+---
+
+## Approaches
+
+### A. Run a local OTel Collector bridge
+
+Document a standard workflow: `kubectl port-forward` + a minimal local `otelcol-contrib` config with `remotetapreceiver` → `otlpexporter` pointing at Signal Studio's ingest port.
+
+**Pros:**
+- Zero changes to Signal Studio
+- Leverages the existing passive tap endpoint
+
+**Cons:**
+- Requires installing `otelcol-contrib` locally
+- Requires maintaining a separate process alongside Signal Studio
+- Adds complexity when running Signal Studio in Docker (two port-forwards, an extra process)
+- Users who only need Signal Studio now need to understand OTel Collector config just to connect
+
+### B. Add an active remotetap client to Signal Studio
+
+Implement a WebSocket client inside the Signal Studio backend that connects outbound to a user-specified remotetap processor endpoint, reads the OTLP JSON stream, and feeds data into the existing catalogs. Expose connect/disconnect controls in the tap popout UI alongside the existing passive tap toggle.
+
+**Pros:**
+- Zero additional processes or tools required
+- No Collector reconfiguration needed — the remotetap processor is already running
+- Reuses all existing catalog infrastructure unchanged
+- Works naturally with Docker: user `kubectl port-forward`s the remotetap port, then uses `host.docker.internal:<port>` as the endpoint
+- Single UI surface for both tap modes
+
+**Cons:**
+- Adds one new Go dependency (`gorilla/websocket`) for WebSocket dialing
+- The tap popout UI becomes slightly more complex (two independent tap modes)
+- Requires the user to `kubectl port-forward` the remotetap processor port before connecting
+
+---
+
+## Recommendation: Option B — Active remotetap client
+
+Option B eliminates the multi-process friction while reusing virtually all existing infrastructure. The implementation cost is modest: a WebSocket dial/read loop, signal-type detection, and two new API endpoints. The dependency addition (`gorilla/websocket`) is minimal and well-established.
+
+Option A remains valid as a fallback for users who prefer the bridge approach, but it should not be the primary supported workflow.
+
+---
+
+## Design
+
+### WebSocket client
+
+A new `remoteTapClient` struct in `internal/tap` dials the remotetap processor endpoint and streams messages in a background goroutine:
+
+```go
+type remoteTapClient struct {
+    catalog     *Catalog
+    spanCatalog *SpanCatalog
+    logCatalog  *LogCatalog
+    cancel      context.CancelFunc
+    doneCh      chan struct{}
+    // status, addr, mu
+}
+```
+
+The run loop:
+
+1. Dials `ws://<addr>` (bare `host:port` inputs are normalised automatically).
+2. Closes the WebSocket connection when the context is cancelled, causing `ReadMessage` to return and the loop to exit cleanly.
+3. For each message, peeks at the top-level JSON key to determine the signal type, then unmarshals with the appropriate `pdata` JSON unmarshaler and calls the matching `extractAndRecord*` function.
+4. Runs a catalog prune goroutine for the duration of the connection so TTL eviction works even when the passive OTLP tap is not running.
+
+Signal-type detection:
+
+```go
+type signalPeek struct {
+    ResourceMetrics json.RawMessage `json:"resourceMetrics"`
+    ResourceSpans   json.RawMessage `json:"resourceSpans"`
+    ResourceLogs    json.RawMessage `json:"resourceLogs"`
+}
+```
+
+### Manager extensions
+
+`tap.Manager` gains a `remoteTap *remoteTapClient` field (initialised in `NewManager`) sharing the same three catalog instances. Three new methods are added:
+
+```go
+func (m *Manager) ConnectRemoteTap(addr string) error
+func (m *Manager) DisconnectRemoteTap()
+func (m *Manager) RemoteTapStatus() (RemoteTapStatus, string, string)
+```
+
+The passive OTLP receiver and the remotetap client are independent — both can run simultaneously and both populate the same catalogs.
+
+### API endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -48,28 +142,49 @@ The existing `/api/tap/status` response is extended with a `remotetap` object:
 {
   "remotetap": {
     "status": "connected",
-    "addr":   "localhost:12001",
+    "addr":   "host.docker.internal:12001",
     "error":  ""
   }
 }
 ```
 
-The `tap.Manager` gains a `remoteTap *remoteTapClient` field (initialised in `NewManager`) and
-three new methods: `ConnectRemoteTap`, `DisconnectRemoteTap`, and `RemoteTapStatus`.
+`RemoteTapStatus` follows the same state vocabulary as `TapStatus`: `idle`, `connecting`, `connected`, `error`.
 
-The passive OTLP tap and the remotetap client are **independent**: both can run simultaneously
-and both populate the same catalogs. The prune goroutine for the catalogs is embedded in the
-remotetap client's run loop (mirroring the existing `pruneLoop` approach), so catalog TTL
-eviction works regardless of which source is active.
+### Frontend
 
-`github.com/gorilla/websocket` is added as a direct dependency for the WebSocket dial/read
-implementation.
+The tap popout gains a "Remote tap" section below the existing OTLP tap section, separated by a divider. It uses the same toggle-button design (`tap-popout__toggle-btn` + `ToggleIcon`) as the OTLP tap row, with an endpoint input field (styled consistently with the Metrics endpoint popout) that is disabled while connected.
+
+The Signal Catalog is enabled when **either** the passive OTLP tap or the remotetap client is active:
+
+```tsx
+tapActive={tap.status === "listening" || tap.remotetap.status === "connected"}
+```
+
+No reconnection on drop — the user reconnects manually from the UI.
+
+---
+
+## Future Work (Out of Scope)
+
+- **TLS support** — allowing `wss://` endpoints for remotetap processors behind TLS termination.
+- **Auto-reconnect** — reconnecting automatically after a connection drop with exponential backoff.
+- **Address persistence** — storing the last-used remotetap address in `localStorage`, similar to the metrics endpoint URL.
+- **Remotetap-based catalog rules** — rules that fire specifically when data is arriving via remotetap (e.g. detecting that the remotetap rate limit is dropping messages at high throughput).
+
+---
 
 ## Consequences
 
-- Adds one direct dependency: `github.com/gorilla/websocket`.
-- No changes to the collector-side configuration required.
-- The catalog UI (`MetricCatalogPanel`) and catalog-based rules continue to work unchanged.
-- The tap status API response gains a new `remotetap` field; existing clients that ignore
-  unknown fields are unaffected.
-- Reconnection on drop is left to the user (they click Connect again); no auto-reconnect.
+### Positive
+
+- Users with a remotetap processor already configured in their Collector can connect Signal Studio without any Collector config changes or additional processes
+- The entire existing catalog stack — API, UI, filter analysis, catalog rules — works unchanged
+- Works naturally with Docker via `host.docker.internal`
+- Single new dependency (`gorilla/websocket`) with no transitive dependencies
+
+### Negative
+
+- Users must `kubectl port-forward` the remotetap processor port before connecting — one manual step remains
+- The tap popout becomes slightly more complex with two independent tap modes
+- No auto-reconnect: a dropped WebSocket connection requires a manual reconnect from the UI
+- The remotetap processor's built-in rate limiting (default: 1 message/second) may cause Signal Studio to miss telemetry at high throughput — this is a limitation of the remotetap processor itself, not this implementation
