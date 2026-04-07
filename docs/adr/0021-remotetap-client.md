@@ -52,7 +52,6 @@ Implement a WebSocket client inside the Signal Studio backend that connects outb
 
 **Pros:**
 - No additional processes or tools required
-- No Collector reconfiguration needed — the remotetap processor is already running
 - Reuses all existing catalog infrastructure unchanged
 - Single UI surface for both tap modes
 
