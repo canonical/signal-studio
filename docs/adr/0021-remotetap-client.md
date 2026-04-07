@@ -56,6 +56,7 @@ Implement a WebSocket client inside the Signal Studio backend that connects outb
 - Single UI surface for both tap modes
 
 **Cons:**
+- Requires the remotetap processor to be configured on the Collector
 - Adds one new Go dependency (`gorilla/websocket`) for WebSocket dialing
 - The tap popout UI becomes slightly more complex (two independent tap modes)
 
