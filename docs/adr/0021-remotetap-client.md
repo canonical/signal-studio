@@ -8,13 +8,9 @@
 
 ## Context
 
-Signal Studio's OTLP sampling tap (ADR-0006, ADR-0012) is a **passive receiver**: the user must configure the Collector to push telemetry to Signal Studio's gRPC/HTTP ingest endpoint (`/v1/metrics`, `/v1/traces`, `/v1/logs`). This works well when Signal Studio runs alongside the Collector, but breaks down in a common deployment topology:
+Signal Studio's OTLP sampling tap (ADR-0006, ADR-0012) is a **passive receiver**: the Collector must be configured to push telemetry to Signal Studio's gRPC/HTTP ingest endpoint (`/v1/metrics`, `/v1/traces`, `/v1/logs`). This requires a Collector config change that is not always possible or desirable.
 
-- Signal Studio runs locally on the developer's machine (or in Docker).
-- The Collector runs on Kubernetes, managed by a platform team.
-- Modifying the Collector config to add a fan-out OTLP exporter requires a config change, a review cycle, and (often) elevated permissions the user may not have.
-
-The `remotetap processor` from `opentelemetry-collector-contrib` is already present in many production Collectors as a debugging aid. It exposes a **WebSocket server** (default port `12001`) that streams OTLP JSON payloads for all three signal types to any connected client. Each WebSocket message is a complete OTLP export request encoded as JSON — `{"resourceMetrics":[...]}`, `{"resourceSpans":[...]}`, or `{"resourceLogs":[...]}`.
+The `remotetap processor` from `opentelemetry-collector-contrib` exposes a **WebSocket server** (default port `12001`) that streams OTLP JSON payloads for all three signal types to any connected client. Each WebSocket message is a complete OTLP export request encoded as JSON — `{"resourceMetrics":[...]}`, `{"resourceSpans":[...]}`, or `{"resourceLogs":[...]}`.
 
 If Signal Studio could act as a WebSocket client, it could consume the tap stream without any Collector reconfiguration.
 
@@ -22,14 +18,9 @@ If Signal Studio could act as a WebSocket client, it could consume the tap strea
 
 ## Problem Breakdown
 
-### Topology mismatch
+### Passive tap requires Collector reconfiguration
 
-The passive tap requires inbound connectivity: the Collector must be able to reach Signal Studio's ports. When the Collector is on Kubernetes and Signal Studio is local, the only realistic paths are:
-
-1. `kubectl port-forward` the Collector's OTLP port, then run a local Collector bridge that forwards from the remotetap processor stream to Signal Studio's ingest endpoint.
-2. Configure a fan-out OTLP exporter in the Collector — requires write access to the Collector config.
-
-Both options introduce friction. Option 1 requires running a separate process. Option 2 requires a config change the user may not be able to make.
+The passive tap requires inbound connectivity from the Collector to Signal Studio, meaning the Collector config must be modified to add a fan-out OTLP exporter. Alternatively, a local Collector bridge process can be run to forward the remotetap processor stream to Signal Studio's ingest endpoint. Both approaches require extra steps beyond Signal Studio itself.
 
 ### Existing catalog infrastructure is reusable
 
@@ -45,33 +36,29 @@ The remotetap processor marshals OTLP data using the same `pdata` JSON marshaler
 
 ### A. Run a local OTel Collector bridge
 
-Document a standard workflow: `kubectl port-forward` + a minimal local `otelcol-contrib` config with `remotetapreceiver` → `otlpexporter` pointing at Signal Studio's ingest port.
+Run a minimal local `otelcol-contrib` instance with `remotetapreceiver` → `otlpexporter` pointing at Signal Studio's ingest port.
 
 **Pros:**
 - Zero changes to Signal Studio
 - Leverages the existing passive tap endpoint
 
 **Cons:**
-- Requires installing `otelcol-contrib` locally
-- Requires maintaining a separate process alongside Signal Studio
-- Adds complexity when running Signal Studio in Docker (two port-forwards, an extra process)
-- Users who only need Signal Studio now need to understand OTel Collector config just to connect
+- Requires installing and running a separate `otelcol-contrib` process
+- Users need to understand OTel Collector config just to connect
 
 ### B. Add an active remotetap client to Signal Studio
 
 Implement a WebSocket client inside the Signal Studio backend that connects outbound to a user-specified remotetap processor endpoint, reads the OTLP JSON stream, and feeds data into the existing catalogs. Expose connect/disconnect controls in the tap popout UI alongside the existing passive tap toggle.
 
 **Pros:**
-- Zero additional processes or tools required
+- No additional processes or tools required
 - No Collector reconfiguration needed — the remotetap processor is already running
 - Reuses all existing catalog infrastructure unchanged
-- Works naturally with Docker: user `kubectl port-forward`s the remotetap port, then uses `host.docker.internal:<port>` as the endpoint
 - Single UI surface for both tap modes
 
 **Cons:**
 - Adds one new Go dependency (`gorilla/websocket`) for WebSocket dialing
 - The tap popout UI becomes slightly more complex (two independent tap modes)
-- Requires the user to `kubectl port-forward` the remotetap processor port before connecting
 
 ---
 
@@ -142,7 +129,7 @@ The existing `/api/tap/status` response is extended with a `remotetap` object:
 {
   "remotetap": {
     "status": "connected",
-    "addr":   "host.docker.internal:12001",
+    "addr":   "localhost:12001",
     "error":  ""
   }
 }
@@ -177,14 +164,12 @@ No reconnection on drop — the user reconnects manually from the UI.
 
 ### Positive
 
-- Users with a remotetap processor already configured in their Collector can connect Signal Studio without any Collector config changes or additional processes
+- Signal Studio can connect to a remotetap processor without any Collector config changes or additional processes
 - The entire existing catalog stack — API, UI, filter analysis, catalog rules — works unchanged
-- Works naturally with Docker via `host.docker.internal`
 - Single new dependency (`gorilla/websocket`) with no transitive dependencies
 
 ### Negative
 
-- Users must `kubectl port-forward` the remotetap processor port before connecting — one manual step remains
 - The tap popout becomes slightly more complex with two independent tap modes
 - No auto-reconnect: a dropped WebSocket connection requires a manual reconnect from the UI
 - The remotetap processor's built-in rate limiting (default: 1 message/second) may cause Signal Studio to miss telemetry at high throughput — this is a limitation of the remotetap processor itself, not this implementation
