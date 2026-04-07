@@ -334,20 +334,22 @@ export function TapConnection({
                   {rtActive ? remotetap.addr : "Remote tap"}
                 </div>
 
-                {!rtActive && (
-                  <input
-                    className="tap-popout__remotetap-input"
-                    type="text"
-                    placeholder="host:port (e.g. localhost:12001)"
-                    value={remoteTapAddr}
-                    onChange={(e) => setRemoteTapAddr(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && remoteTapAddr.trim()) {
-                        onRemoteTapConnect(remoteTapAddr.trim());
-                      }
-                    }}
-                  />
-                )}
+                <div className="metrics-popout__label-row">
+                  <label className="metrics-popout__label">Endpoint</label>
+                </div>
+                <input
+                  className="metrics-popout__input"
+                  type="text"
+                  placeholder="host:port (e.g. localhost:12001)"
+                  value={remoteTapAddr}
+                  onChange={(e) => setRemoteTapAddr(e.target.value)}
+                  disabled={rtActive}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && remoteTapAddr.trim() && !rtActive) {
+                      onRemoteTapConnect(remoteTapAddr.trim());
+                    }
+                  }}
+                />
 
                 {remotetap.error && (
                   <p className="tap-popout__error">{remotetap.error}</p>
