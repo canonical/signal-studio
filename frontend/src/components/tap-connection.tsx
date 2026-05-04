@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { TapStatus } from "../types/api";
+import type { RemoteTapInfo, TapStatus } from "../types/api";
 import { BrushCleaning } from "lucide-react";
 
 interface TapConnectionProps {
@@ -9,9 +9,12 @@ interface TapConnectionProps {
   grpcAddr: string | null;
   httpAddr: string | null;
   rateChanged: boolean;
+  remotetap: RemoteTapInfo;
   onReset: () => void;
   onStart: () => void;
   onStop: () => void;
+  onRemoteTapConnect: (addr: string) => void;
+  onRemoteTapDisconnect: () => void;
 }
 
 function RadioTowerIcon() {
@@ -148,12 +151,16 @@ export function TapConnection({
   grpcAddr,
   httpAddr,
   rateChanged,
+  remotetap,
   onReset,
   onStart,
   onStop,
+  onRemoteTapConnect,
+  onRemoteTapDisconnect,
 }: TapConnectionProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [remoteTapAddr, setRemoteTapAddr] = useState("");
   const popoutRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
@@ -307,6 +314,56 @@ export function TapConnection({
               </div>
             </>
           )}
+
+          <hr className="tap-popout__divider" />
+
+          {(() => {
+            const rtActive = remotetap.status === "connected" || remotetap.status === "connecting";
+            return (
+              <>
+                <div className="tap-popout__status">
+                  <button
+                    className="tap-popout__toggle-btn"
+                    type="button"
+                    title={rtActive ? "Disconnect remote tap" : "Connect to remote tap"}
+                    disabled={!rtActive && !remoteTapAddr.trim()}
+                    onClick={rtActive ? onRemoteTapDisconnect : () => onRemoteTapConnect(remoteTapAddr.trim())}
+                  >
+                    <ToggleIcon active={rtActive} />
+                  </button>
+                  Remote tap
+                </div>
+
+                <div className="metrics-popout__label-row">
+                  <label className="metrics-popout__label">Endpoint</label>
+                </div>
+                <input
+                  className="metrics-popout__input"
+                  type="text"
+                  placeholder="host:port (e.g. localhost:12001)"
+                  value={remoteTapAddr}
+                  onChange={(e) => setRemoteTapAddr(e.target.value)}
+                  disabled={rtActive}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && remoteTapAddr.trim() && !rtActive) {
+                      onRemoteTapConnect(remoteTapAddr.trim());
+                    }
+                  }}
+                />
+
+                {!rtActive && !remotetap.error && (
+                  <p className="tap-popout__hint">
+                    Enter a remotetap processor endpoint and toggle to stream
+                    signals directly from your Collector.
+                  </p>
+                )}
+
+                {remotetap.error && (
+                  <p className="tap-popout__error">{remotetap.error}</p>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
     </div>

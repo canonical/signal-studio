@@ -7,7 +7,6 @@ import type {
   MatchOutcome,
   MetricEntry,
   SpanEntry,
-  TapStatus,
 } from "../types/api";
 
 type SignalTab = "metrics" | "spans" | "logs";
@@ -17,7 +16,7 @@ interface MetricCatalogPanelProps {
   spanEntries: SpanEntry[];
   logEntries: LogEntry[];
   filterAnalyses?: FilterAnalysis[];
-  tapStatus: TapStatus;
+  tapActive: boolean;
 }
 
 type SortKey = "outcome" | "name" | "type" | "rate" | "pointCount";
@@ -614,7 +613,7 @@ export function MetricCatalogPanel({
   spanEntries,
   logEntries,
   filterAnalyses,
-  tapStatus,
+  tapActive,
 }: MetricCatalogPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<SignalTab>("metrics");
@@ -680,7 +679,7 @@ export function MetricCatalogPanel({
 
   const totalCount = entries.length + spanEntries.length + logEntries.length;
   const isEmpty = totalCount === 0;
-  const tapEnabled = tapStatus === "listening";
+  const tapEnabled = tapActive;
 
   return (
     <div className={`catalog-panel${expanded ? " is-expanded" : ""}`}>

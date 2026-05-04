@@ -73,12 +73,21 @@ export interface MetricEntry {
   firstSeenAt: string;
 }
 
+export type RemoteTapStatus = "idle" | "connecting" | "connected" | "error";
+
+export interface RemoteTapInfo {
+  status: RemoteTapStatus;
+  addr?: string;
+  error?: string;
+}
+
 export interface TapStatusResponse {
   status: TapStatus;
   error?: string;
   startedAt?: string;
   grpcAddr?: string;
   httpAddr?: string;
+  remotetap?: RemoteTapInfo;
 }
 
 export type SpanKind =

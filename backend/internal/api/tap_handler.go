@@ -56,11 +56,17 @@ func (h *tapHandler) handleStop(w http.ResponseWriter, r *http.Request) {
 func (h *tapHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 	status, lastErr, startedAt := h.mgr.Status()
 	grpcAddr, httpAddr := h.mgr.Addrs()
+	rtStatus, rtErr, rtAddr := h.mgr.RemoteTapStatus()
 
 	resp := map[string]any{
 		"status":   string(status),
 		"grpcAddr": grpcAddr,
 		"httpAddr": httpAddr,
+		"remotetap": map[string]any{
+			"status": string(rtStatus),
+			"addr":   rtAddr,
+			"error":  rtErr,
+		},
 	}
 	if status == tap.TapStatusDisabled {
 		resp["disabled"] = true
@@ -72,6 +78,28 @@ func (h *tapHandler) handleStatus(w http.ResponseWriter, r *http.Request) {
 		resp["startedAt"] = startedAt.Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+type remoteTapConnectRequest struct {
+	Addr string `json:"addr"`
+}
+
+func (h *tapHandler) handleRemoteTapConnect(w http.ResponseWriter, r *http.Request) {
+	var req remoteTapConnectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Addr == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "addr is required"})
+		return
+	}
+	if err := h.mgr.ConnectRemoteTap(req.Addr); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "connecting"})
+}
+
+func (h *tapHandler) handleRemoteTapDisconnect(w http.ResponseWriter, _ *http.Request) {
+	h.mgr.DisconnectRemoteTap()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "idle"})
 }
 
 func (h *tapHandler) handleCatalog(w http.ResponseWriter, r *http.Request) {

@@ -41,4 +41,6 @@ All endpoints are served from the backend HTTP server (default port `8080`).
 | `GET` | `/api/tap/status` | Tap status + window timing |
 | `GET` | `/api/tap/catalog` | Discovered metrics + attribute metadata |
 | `POST` | `/api/tap/reset` | Reset tap catalog |
+| `POST` | `/api/tap/remotetap/connect` | Connect to a remotetap processor WebSocket stream |
+| `POST` | `/api/tap/remotetap/disconnect` | Disconnect from remotetap stream |
 

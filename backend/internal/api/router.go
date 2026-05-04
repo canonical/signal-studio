@@ -38,11 +38,13 @@ func NewRouter(mgr *metrics.Manager, tapMgr *tap.Manager, staticHandler http.Han
 		"GET /api/metrics/status":      mh.handleStatus,
 		"POST /api/metrics/reset":      mh.handleReset,
 		"POST /api/alert-coverage":     ach.handleAlertCoverage,
-		"POST /api/tap/start":          th.handleStart,
-		"POST /api/tap/stop":           th.handleStop,
-		"GET /api/tap/status":          th.handleStatus,
-		"GET /api/tap/catalog":         th.handleCatalog,
-		"POST /api/tap/reset":          th.handleReset,
+		"POST /api/tap/start":                   th.handleStart,
+		"POST /api/tap/stop":                    th.handleStop,
+		"GET /api/tap/status":                   th.handleStatus,
+		"GET /api/tap/catalog":                  th.handleCatalog,
+		"POST /api/tap/reset":                   th.handleReset,
+		"POST /api/tap/remotetap/connect":       th.handleRemoteTapConnect,
+		"POST /api/tap/remotetap/disconnect":    th.handleRemoteTapDisconnect,
 	}
 
 	for _, r := range Routes {

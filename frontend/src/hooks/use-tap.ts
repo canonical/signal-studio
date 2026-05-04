@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   LogEntry,
   MetricEntry,
+  RemoteTapInfo,
   SpanEntry,
   TapCatalogResponse,
   TapStatus,
@@ -20,10 +21,15 @@ interface UseTapResult {
   grpcAddr: string | null;
   httpAddr: string | null;
   rateChanged: boolean;
+  remotetap: RemoteTapInfo;
   resetCatalog: () => Promise<void>;
   start: () => Promise<void>;
   stop: () => Promise<void>;
+  connectRemoteTap: (addr: string) => Promise<void>;
+  disconnectRemoteTap: () => Promise<void>;
 }
+
+const defaultRemoteTapInfo: RemoteTapInfo = { status: "idle" };
 
 export function useTap(): UseTapResult {
   const [status, setStatus] = useState<TapStatus>("idle");
@@ -34,6 +40,7 @@ export function useTap(): UseTapResult {
   const [grpcAddr, setGrpcAddr] = useState<string | null>(null);
   const [httpAddr, setHttpAddr] = useState<string | null>(null);
   const [rateChanged, setRateChanged] = useState(false);
+  const [remotetap, setRemotetap] = useState<RemoteTapInfo>(defaultRemoteTapInfo);
   const statusPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const catalogPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -45,6 +52,7 @@ export function useTap(): UseTapResult {
       setStatus(data.status);
       setGrpcAddr(data.grpcAddr ?? null);
       setHttpAddr(data.httpAddr ?? null);
+      setRemotetap(data.remotetap ?? defaultRemoteTapInfo);
       if (data.error) setError(data.error);
       else setError(null);
     } catch {
@@ -119,5 +127,31 @@ export function useTap(): UseTapResult {
     }
   }, [fetchStatus]);
 
-  return { status, entries, spanEntries, logEntries, error, grpcAddr, httpAddr, rateChanged, resetCatalog, start, stop };
+  const connectRemoteTap = useCallback(async (addr: string) => {
+    try {
+      const res = await fetch("/api/tap/remotetap/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ addr }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error ?? "Failed to connect to remotetap");
+      }
+      await fetchStatus();
+    } catch {
+      setError("Failed to connect to remotetap");
+    }
+  }, [fetchStatus]);
+
+  const disconnectRemoteTap = useCallback(async () => {
+    try {
+      await fetch("/api/tap/remotetap/disconnect", { method: "POST" });
+      await fetchStatus();
+    } catch {
+      // silently ignore
+    }
+  }, [fetchStatus]);
+
+  return { status, entries, spanEntries, logEntries, error, grpcAddr, httpAddr, rateChanged, remotetap, resetCatalog, start, stop, connectRemoteTap, disconnectRemoteTap };
 }

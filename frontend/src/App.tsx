@@ -192,9 +192,12 @@ export default function App() {
                     grpcAddr={tap.grpcAddr}
                     httpAddr={tap.httpAddr}
                     rateChanged={tap.rateChanged}
+                    remotetap={tap.remotetap}
                     onReset={tap.resetCatalog}
                     onStart={tap.start}
                     onStop={tap.stop}
+                    onRemoteTapConnect={tap.connectRemoteTap}
+                    onRemoteTapDisconnect={tap.disconnectRemoteTap}
                   />
                   <MetricsConnection
                     status={metrics.status}
@@ -238,7 +241,7 @@ export default function App() {
                 spanEntries={tap.spanEntries}
                 logEntries={tap.logEntries}
                 filterAnalyses={result?.filterAnalyses}
-                tapStatus={tap.status}
+                tapActive={tap.status === "listening" || tap.remotetap.status === "connected"}
               />
             </div>
           </div>

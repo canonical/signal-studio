@@ -38,6 +38,7 @@ type Manager struct {
 	startedAt   time.Time
 	grpcAddr    string
 	httpAddr    string
+	remoteTap   *remoteTapClient
 }
 
 // NewManager creates a new tap Manager.
@@ -47,12 +48,16 @@ func NewManager(disabled bool) *Manager {
 	if disabled {
 		status = TapStatusDisabled
 	}
+	catalog := NewCatalog(defaultTTL)
+	spanCatalog := NewSpanCatalog(defaultTTL)
+	logCatalog := NewLogCatalog(defaultTTL)
 	return &Manager{
 		disabled:    disabled,
 		status:      status,
-		catalog:     NewCatalog(defaultTTL),
-		spanCatalog: NewSpanCatalog(defaultTTL),
-		logCatalog:  NewLogCatalog(defaultTTL),
+		catalog:     catalog,
+		spanCatalog: spanCatalog,
+		logCatalog:  logCatalog,
+		remoteTap:   newRemoteTapClient(catalog, spanCatalog, logCatalog),
 	}
 }
 
@@ -149,6 +154,25 @@ func (m *Manager) SpanCatalog() *SpanCatalog {
 // LogCatalog returns the log catalog.
 func (m *Manager) LogCatalog() *LogCatalog {
 	return m.logCatalog
+}
+
+// ConnectRemoteTap starts an outbound WebSocket connection to a remotetap processor
+// endpoint and feeds received telemetry into the shared catalogs.
+func (m *Manager) ConnectRemoteTap(addr string) error {
+	if m.disabled {
+		return fmt.Errorf("tap is disabled")
+	}
+	return m.remoteTap.Connect(addr)
+}
+
+// DisconnectRemoteTap closes the remotetap WebSocket connection.
+func (m *Manager) DisconnectRemoteTap() {
+	m.remoteTap.Disconnect()
+}
+
+// RemoteTapStatus returns the current remotetap connection state, last error, and address.
+func (m *Manager) RemoteTapStatus() (RemoteTapStatus, string, string) {
+	return m.remoteTap.Status()
 }
 
 // pruneLoop periodically removes expired catalog entries.
