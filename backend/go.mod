@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/VictoriaMetrics/metricsql v0.85.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/owenrumney/go-sarif/v2 v2.3.3
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.5
@@ -14,7 +15,6 @@ require (
 
 require (
 	github.com/VictoriaMetrics/metrics v1.35.3 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/go-version v1.8.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -26,9 +26,9 @@ require (
 	go.opentelemetry.io/collector/featuregate v1.52.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
